@@ -100,13 +100,24 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   async function handleLogout() {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: async () => {
-        await AsyncStorage.multiRemove(['pulse_auth_token', 'pulse_auth_user']);
-        router.replace('/auth');
-      }},
-    ]);
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.multiRemove(['pulse_auth_token', 'pulse_auth_user']);
+            } catch {}
+            router.replace('/auth');
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   }
   const [ibmStatus, setIBMStatus] = useState('connecting');
   const [concerns,  setConcerns]  = useState([]);
