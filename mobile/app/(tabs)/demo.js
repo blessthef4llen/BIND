@@ -4,8 +4,8 @@ import {
   StyleSheet, StatusBar, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { C, FONTS } from '../../constants/colors';
-import { API_BASE } from '../../constants/api';
+import { Colors as C, FONTS } from '../../constants/theme';
+import { API_BASE } from '../../services/api';
 
 const INIT_STEPS = [
   { id: 1, name: 'Check-in Agent',          desc: 'Logs Day 8 entry — body area, severity, urgency',   state: 'idle' },
@@ -20,16 +20,16 @@ function StepCard({ step }) {
   }, [step.state]);
 
   const bgColor = anim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(255,255,255,0.03)', step.state === 'done' ? 'rgba(212,43,43,0.08)' : 'rgba(212,43,43,0.04)'],
+    inputRange:  [0, 1],
+    outputRange: ['rgba(255,255,255,0.03)', step.state === 'done' ? 'rgba(201,64,64,0.08)' : 'rgba(201,64,64,0.04)'],
   });
-  const circleBg  = step.state === 'done' ? C.red : step.state === 'active' ? 'rgba(212,43,43,0.3)' : 'rgba(255,255,255,0.06)';
+  const circleBg  = step.state === 'done' ? C.red : step.state === 'active' ? 'rgba(201,64,64,0.3)' : 'rgba(255,255,255,0.06)';
   const circleClr = step.state === 'done' ? C.white : step.state === 'active' ? C.red : 'rgba(255,255,255,0.3)';
   const nameCl    = step.state === 'idle' ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.9)';
   const descCl    = step.state === 'idle' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.45)';
 
   return (
-    <Animated.View style={[styles.stepCard, { backgroundColor: bgColor, borderColor: step.state !== 'idle' ? 'rgba(212,43,43,0.25)' : 'rgba(255,255,255,0.06)' }]}>
+    <Animated.View style={[styles.stepCard, { backgroundColor: bgColor, borderColor: step.state !== 'idle' ? 'rgba(201,64,64,0.25)' : 'rgba(255,255,255,0.06)' }]}>
       <View style={[styles.stepCircle, { backgroundColor: circleBg }]}>
         <Text style={[styles.stepNum, { color: circleClr }]}>
           {step.state === 'done' ? '✓' : step.id}
@@ -59,13 +59,13 @@ function SeverityBar({ value, onChange }) {
 
 export default function DemoScreen() {
   const insets = useSafeAreaInsets();
-  const [steps,    setSteps]    = useState(INIT_STEPS);
-  const [area,     setArea]     = useState('Left Ankle');
-  const [symptom,  setSymptom]  = useState('Cannot walk normally. Severe arch pain and ankle swelling.');
-  const [severity, setSeverity] = useState(8);
-  const [firing,   setFiring]   = useState(false);
-  const [error,    setError]    = useState('');
-  const [result,   setResult]   = useState(null);
+  const [steps,   setSteps]   = useState(INIT_STEPS);
+  const [area,    setArea]    = useState('Left Ankle');
+  const [symptom, setSymptom] = useState('Cannot walk normally. Severe arch pain and ankle swelling.');
+  const [severity,setSeverity]= useState(8);
+  const [firing,  setFiring]  = useState(false);
+  const [error,   setError]   = useState('');
+  const [result,  setResult]  = useState(null);
 
   function updateStep(id, state) {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, state } : s));
@@ -85,9 +85,9 @@ export default function DemoScreen() {
 
     try {
       const r = await fetch(`${API_BASE}/run-agent-chain`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body_area: area, symptom, urgency_level: 'high', severity, notes: 'Day 8 live demo', language: 'en' }),
+        body:    JSON.stringify({ body_area: area, symptom, urgency_level: 'high', severity, notes: 'Day 8 live demo', language: 'en' }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
@@ -98,17 +98,17 @@ export default function DemoScreen() {
       }, 2400);
     } catch (e) {
       setTimeout(() => {
-        setError(`API unreachable. Run: python run.py\n\n${e.message}`);
+        setError(`API unreachable. Run: uvicorn main:app --port 8000\n\n${e.message}`);
         setSteps(INIT_STEPS.map(s => ({ ...s, state: 'idle' })));
         setFiring(false);
       }, 600);
     }
   }
 
-  const prep = result?.step3_visit_prep || {};
-  const pat  = result?.step2_pattern    || {};
-  const esc  = prep.escalation_decision || pat.escalation_level || 'monitor';
-  const escBg = esc === 'urgent' ? C.red : esc === 'see_doctor' ? '#D4A500' : '#22C55E';
+  const prep   = result?.step3_visit_prep || {};
+  const pat    = result?.step2_pattern    || {};
+  const esc    = prep.escalation_decision || pat.escalation_level || 'monitor';
+  const escBg  = esc === 'urgent' ? C.red : esc === 'see_doctor' ? '#D4A500' : '#22C55E';
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -174,9 +174,9 @@ export default function DemoScreen() {
               </View>
             </View>
             <View style={styles.resultBody}>
-              <ResultSection title="Pattern Summary"    text={pat.pattern_summary      || 'Pattern analyzed.'} />
-              <ResultSection title="Escalation Reason"  text={prep.escalation_reason   || 'Based on severity trend.'} />
-              <ResultSection title="Concern Summary"    text={prep.concern_summary     || 'Patient logged escalating symptoms.'} />
+              <ResultSection title="Pattern Summary"   text={pat.pattern_summary    || 'Pattern analyzed.'} />
+              <ResultSection title="Escalation Reason" text={prep.escalation_reason || 'Based on severity trend.'} />
+              <ResultSection title="Concern Summary"   text={prep.concern_summary   || 'Patient logged escalating symptoms.'} />
               <Text style={styles.rSecTitle}>Questions for Your Doctor</Text>
               {(prep.suggested_questions || []).length === 0 ? (
                 <Text style={styles.rText}>No questions generated.</Text>
@@ -206,53 +206,53 @@ function ResultSection({ title, text }) {
 }
 
 const styles = StyleSheet.create({
-  container:   { flex: 1, backgroundColor: C.black },
-  topBar:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
-  topTitle:    { fontFamily: FONTS.display, fontSize: 32, color: C.white, letterSpacing: 1 },
-  ibmBadge:    { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(212,43,43,0.15)', borderWidth: 1, borderColor: 'rgba(212,43,43,0.3)', borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 },
-  ibmDot:      { width: 5, height: 5, borderRadius: 3, backgroundColor: C.red },
-  ibmTxt:      { fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: C.red, fontFamily: FONTS.bodySemi },
-  scroll:      { flex: 1, paddingHorizontal: 20 },
+  container:  { flex: 1, backgroundColor: C.black },
+  topBar:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
+  topTitle:   { fontFamily: FONTS.display, fontSize: 32, color: C.white, letterSpacing: 1 },
+  ibmBadge:   { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(201,64,64,0.15)', borderWidth: 1, borderColor: 'rgba(201,64,64,0.3)', borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 },
+  ibmDot:     { width: 5, height: 5, borderRadius: 3, backgroundColor: C.red },
+  ibmTxt:     { fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: C.red, fontFamily: FONTS.bodySemi },
+  scroll:     { flex: 1, paddingHorizontal: 20 },
 
-  demoHero:    { backgroundColor: 'rgba(212,43,43,0.08)', borderWidth: 1, borderColor: 'rgba(212,43,43,0.2)', borderRadius: 14, padding: 16, marginBottom: 14 },
-  demoEye:     { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: C.red, marginBottom: 6, fontFamily: FONTS.bodySemi },
-  demoTitle:   { fontFamily: FONTS.display, fontSize: 29, color: C.white, letterSpacing: 1, marginBottom: 4 },
-  demoSub:     { fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 20, fontFamily: FONTS.body },
-  demoCode:    { fontSize: 11, color: C.red, fontFamily: 'monospace' },
+  demoHero:   { backgroundColor: 'rgba(201,64,64,0.08)', borderWidth: 1, borderColor: 'rgba(201,64,64,0.2)', borderRadius: 14, padding: 16, marginBottom: 14 },
+  demoEye:    { fontSize: 11, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: C.red, marginBottom: 6, fontFamily: FONTS.bodySemi },
+  demoTitle:  { fontFamily: FONTS.display, fontSize: 29, color: C.white, letterSpacing: 1, marginBottom: 4 },
+  demoSub:    { fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 20, fontFamily: FONTS.body },
+  demoCode:   { fontSize: 11, color: C.red, fontFamily: 'monospace' },
 
-  stepCard:    { flexDirection: 'row', gap: 10, alignItems: 'flex-start', padding: 12, paddingHorizontal: 14, borderWidth: 1, borderRadius: 8, marginBottom: 8 },
-  stepCircle:  { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  stepNum:     { fontSize: 12, fontWeight: '700', fontFamily: FONTS.bodySemi },
-  stepName:    { fontSize: 14, fontWeight: '600', marginBottom: 2, fontFamily: FONTS.bodySemi },
-  stepDesc:    { fontSize: 11, fontFamily: FONTS.body },
+  stepCard:   { flexDirection: 'row', gap: 10, alignItems: 'flex-start', padding: 12, paddingHorizontal: 14, borderWidth: 1, borderRadius: 8, marginBottom: 8 },
+  stepCircle: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  stepNum:    { fontSize: 12, fontWeight: '700', fontFamily: FONTS.bodySemi },
+  stepName:   { fontSize: 14, fontWeight: '600', marginBottom: 2, fontFamily: FONTS.bodySemi },
+  stepDesc:   { fontSize: 11, fontFamily: FONTS.body },
 
-  form:        { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: 16, marginBottom: 14, gap: 10 },
-  formLabel:   { fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', fontFamily: FONTS.bodySemi },
-  darkInput:   { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 5, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: 'rgba(255,255,255,0.85)', fontFamily: FONTS.body },
-  sevLbl:      { fontSize: 12, color: 'rgba(255,255,255,0.35)', fontFamily: FONTS.body },
-  sevSeg:      { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.1)' },
-  sevSegOn:    { backgroundColor: C.red },
-  sevVal:      { fontFamily: FONTS.display, fontSize: 22, color: C.red, minWidth: 24, textAlign: 'center' },
-  urgDisplay:  { paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1.5, borderColor: 'rgba(212,43,43,0.4)', backgroundColor: 'rgba(212,43,43,0.1)', borderRadius: 5, alignItems: 'center' },
-  urgTxt:      { fontSize: 13, fontWeight: '700', color: C.red, textTransform: 'uppercase', letterSpacing: 1, fontFamily: FONTS.bodySemi },
+  form:       { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', borderRadius: 14, padding: 16, marginBottom: 14, gap: 10 },
+  formLabel:  { fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)', fontFamily: FONTS.bodySemi },
+  darkInput:  { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 5, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: 'rgba(255,255,255,0.85)', fontFamily: FONTS.body },
+  sevLbl:     { fontSize: 12, color: 'rgba(255,255,255,0.35)', fontFamily: FONTS.body },
+  sevSeg:     { flex: 1, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.1)' },
+  sevSegOn:   { backgroundColor: C.red },
+  sevVal:     { fontFamily: FONTS.display, fontSize: 22, color: C.red, minWidth: 24, textAlign: 'center' },
+  urgDisplay: { paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1.5, borderColor: 'rgba(201,64,64,0.4)', backgroundColor: 'rgba(201,64,64,0.1)', borderRadius: 5, alignItems: 'center' },
+  urgTxt:     { fontSize: 13, fontWeight: '700', color: C.red, textTransform: 'uppercase', letterSpacing: 1, fontFamily: FONTS.bodySemi },
 
-  fireBtn:      { backgroundColor: C.red, borderRadius: 8, paddingVertical: 16, alignItems: 'center', marginBottom: 0 },
-  fireBtnFiring:{ backgroundColor: C.redDark },
-  fireBtnTxt:   { fontFamily: FONTS.display, fontSize: 22, letterSpacing: 2, color: C.white },
+  fireBtn:       { backgroundColor: C.red, borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginBottom: 14 },
+  fireBtnFiring: { opacity: 0.6 },
+  fireBtnTxt:    { fontFamily: FONTS.display, fontSize: 22, letterSpacing: 2, color: C.white },
 
-  errBox:      { backgroundColor: 'rgba(212,43,43,0.08)', borderWidth: 1, borderColor: 'rgba(212,43,43,0.25)', borderRadius: 5, padding: 12, marginTop: 10 },
-  errTxt:      { fontSize: 13, color: 'rgba(255,150,150,0.9)', lineHeight: 20, fontFamily: FONTS.body },
+  errBox:  { backgroundColor: 'rgba(201,64,64,0.1)', borderWidth: 1, borderColor: 'rgba(201,64,64,0.3)', borderRadius: 8, padding: 14, marginBottom: 14 },
+  errTxt:  { fontSize: 12, color: C.red, fontFamily: FONTS.body, lineHeight: 18 },
 
-  resultBox:   { backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(212,43,43,0.25)', borderRadius: 14, overflow: 'hidden', marginTop: 14 },
-  resultHd:    { backgroundColor: 'rgba(212,43,43,0.15)', padding: 10, paddingHorizontal: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  resultTitle: { fontFamily: FONTS.display, fontSize: 16, color: C.white, letterSpacing: 1 },
-  escBadge:    { borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 },
-  escTxt:      { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: C.white, fontFamily: FONTS.bodySemi },
+  resultBox:   { backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden', marginBottom: 14 },
+  resultHd:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  resultTitle: { fontFamily: FONTS.display, fontSize: 20, color: C.white, letterSpacing: 1 },
+  escBadge:    { borderRadius: 6, paddingVertical: 4, paddingHorizontal: 10 },
+  escTxt:      { fontFamily: FONTS.bodySemi, fontSize: 11, color: C.white, letterSpacing: 1 },
   resultBody:  { padding: 14 },
-  rSecTitle:   { fontSize: 10, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 6, fontFamily: FONTS.bodySemi },
-  rText:       { fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 22, fontFamily: FONTS.body },
-  rQ:          { flexDirection: 'row', gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
-  rQNum:       { width: 18, height: 18, borderRadius: 9, backgroundColor: 'rgba(212,43,43,0.25)', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  rQNumTxt:    { fontSize: 10, fontWeight: '700', color: C.red, fontFamily: FONTS.bodySemi },
-  rQTxt:       { flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 22, fontFamily: FONTS.body },
+  rSecTitle:   { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', marginBottom: 4, fontFamily: FONTS.bodySemi },
+  rText:       { fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 19, marginBottom: 12, fontFamily: FONTS.body },
+  rQ:          { flexDirection: 'row', gap: 10, marginBottom: 8, alignItems: 'flex-start' },
+  rQNum:       { width: 20, height: 20, borderRadius: 10, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 },
+  rQNumTxt:    { fontSize: 10, fontWeight: '700', color: C.white, fontFamily: FONTS.bodySemi },
+  rQTxt:       { flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 19, fontFamily: FONTS.body },
 });
