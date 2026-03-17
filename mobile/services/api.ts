@@ -1,96 +1,197 @@
-const BASE_URL = "http://192.168.0.126:8000";
+/**
+ * services/api.ts — Pulse API client
+ *
+ * Update API_BASE_URL with your machine's LAN IP before running on a device.
+ * Run `ifconfig` (Mac/Linux) or `ipconfig` (Windows) to find it.
+ * Example: http://192.168.1.42:8000
+ *
+ * Backend runs on port 8000 (FastAPI / uvicorn).
+ */
 
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
-  }
+export const API_BASE_URL = 'http://localhost:8000';
+export const API_BASE     = `${API_BASE_URL}/api`;
 
-  return res.json() as Promise<T>;
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type UrgencyLevel   = 'low' | 'medium' | 'high';
+export type EscalationLevel = 'monitor' | 'see_doctor' | 'urgent';
+export type Confidence     = 'high' | 'medium' | 'low';
+
+export interface HealthStatus {
+  status: string;
+  granite_ready: boolean;
 }
 
-export type UrgencyLevel = "low" | "medium" | "high";
-
-export interface PrepRequest {
-  body_area?: string;
-  concern_description?: string;
-  urgency?: UrgencyLevel;
-  start_time?: string;
+export interface ConcernLog {
+  id:                   string;
+  date_logged:          string;
+  body_area:            string;
+  symptom:              string;
+  urgency_level:        UrgencyLevel;
+  severity:             number;
+  notes:                string;
+  symptom_date?:        string;
+  category?:            string;
+  category_confidence?: Confidence;
+  archived:             boolean;
+  archived_at?:         string | null;
 }
 
-export interface PrepResponse {
-  symptom_summary: string;
-  questions_to_ask: string[];
-  concerns_to_mention: Array<{
-    area: string;
-    urgency: UrgencyLevel;
-  }>;
+export interface NewConcernInput {
+  body_area:            string;
+  symptom:              string;
+  urgency_level:        UrgencyLevel;
+  severity?:            number;
+  notes?:               string;
+  symptom_date?:        string;
+  category?:            string;
+  category_confidence?: Confidence;
 }
 
-export interface ExtractResponse {
-  diagnosis?: string;
-  prescriptions?: string[];
-  key_advice?: string[];
-  lifestyle_recommendations?: string[];
-  follow_up_date?: string;
-  [key: string]: unknown;
+export interface ConcernUpdateInput {
+  symptom?:             string;
+  body_area?:           string;
+  urgency_level?:       UrgencyLevel;
+  severity?:            number;
+  notes?:               string;
+  category?:            string;
+  category_confidence?: Confidence;
+}
+
+export interface CategorizeResult {
+  category:   string;
+  confidence: Confidence;
+  reason:     string;
+}
+
+export interface VisitPrepResponse {
+  symptom_summary:     string;
+  questions_to_ask:    string[];
+  concerns_to_mention: Array<{ area: string; urgency: UrgencyLevel }>;
+}
+
+export interface ExtractNoteResponse {
+  diagnosis:      string;
+  prescriptions:  string[];
+  key_advice:     string[];
+  follow_up_date: string;
 }
 
 export interface TimelineEntry {
-  visit_date?: string;
-  visit_reason?: string;
-  diagnosis?: string;
-  advice?: string;
-  follow_up?: string;
-  body_area?: string;
-  [key: string]: unknown;
+  id:             string;
+  visit_date:     string;
+  diagnosis:      string;
+  prescriptions:  string[];
+  key_advice:     string[];
+  follow_up_date: string;
+  archived:       boolean;
+  archived_at?:   string | null;
 }
 
-export interface HealthResponse {
-  status?: string;
-  ibm_ready?: boolean;
-  [key: string]: unknown;
+export interface PatternResult {
+  pattern_summary:  string;
+  escalation_level: EscalationLevel;
+  entry_count:      number;
 }
+
+export interface VisitPrepChainResult {
+  concern_summary:      string;
+  escalation_decision:  EscalationLevel;
+  escalation_reason:    string;
+  suggested_questions:  string[];
+}
+
+export interface AgentChainResult {
+  step1_checkin:    ConcernLog;
+  step2_pattern:    PatternResult;
+  step3_visit_prep: VisitPrepChainResult;
+}
+
+// ── ROUTES constant (import this in screens) ──────────────────────────────────
+
+export const ROUTES = {
+  health:         `${API_BASE}/health`,
+  prep:           `${API_BASE}/prep`,
+  extract:        `${API_BASE}/extract`,
+  categorize:     `${API_BASE}/categorize`,
+
+  concerns:       `${API_BASE}/concerns`,
+  concernArchived:`${API_BASE}/concerns/archived`,
+  concern:        (id: string) => `${API_BASE}/concerns/${id}`,
+  concernArchive: (id: string) => `${API_BASE}/concerns/${id}/archive`,
+  concernRestore: (id: string) => `${API_BASE}/concerns/${id}/restore`,
+
+  timeline:       `${API_BASE}/timeline`,
+  timelineEntry:  (id: string) => `${API_BASE}/timeline/${id}`,
+  timelineArchive:(id: string) => `${API_BASE}/timeline/${id}/archive`,
+  timelineRestore:(id: string) => `${API_BASE}/timeline/${id}/restore`,
+
+  agentChain:     `${API_BASE}/run-agent-chain`,
+} as const;
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+async function _fetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`API ${options?.method ?? 'GET'} ${url} → ${res.status}: ${text}`);
+  }
+  // 204 No Content
+  if (res.status === 204) return {} as T;
+  return res.json() as Promise<T>;
+}
+
+const get  = <T>(url: string) => _fetch<T>(url);
+const post = <T>(url: string, body: object) =>
+  _fetch<T>(url, { method: 'POST', body: JSON.stringify(body) });
+const patch = <T>(url: string, body: object) =>
+  _fetch<T>(url, { method: 'PATCH', body: JSON.stringify(body) });
+const del  = <T>(url: string) => _fetch<T>(url, { method: 'DELETE' });
+
+// ── API client ────────────────────────────────────────────────────────────────
 
 export const api = {
-  health: async (): Promise<HealthResponse> => {
-    const res = await fetch(`${BASE_URL}/api/health`);
-    return handleResponse<HealthResponse>(res);
-  },
+  // Health
+  health: ()                           => get<HealthStatus>(ROUTES.health),
 
-  prep: async (data: PrepRequest): Promise<PrepResponse> => {
-    const res = await fetch(`${BASE_URL}/api/prep`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        body_area: data.body_area ?? "",
-        concern_description: data.concern_description ?? "",
-        urgency: data.urgency ?? "low",
-        start_time: data.start_time ?? "",
-      }),
-    });
+  // Agents
+  prep:       (data: Omit<ConcernLog, 'id'|'date_logged'|'archived'|'archived_at'>) =>
+    post<VisitPrepResponse>(ROUTES.prep, {
+      body_area:           data.body_area,
+      start_time:          '',
+      concern_description: data.symptom,
+      urgency:             data.urgency_level,
+      additional_message:  data.notes ?? '',
+    }),
 
-    return handleResponse<PrepResponse>(res);
-  },
+  extract:    (text: string)                => post<ExtractNoteResponse>(ROUTES.extract, { text }),
+  categorize: (body_area: string, description: string, urgency: UrgencyLevel = 'low') =>
+    post<CategorizeResult>(ROUTES.categorize, { body_area, description, urgency }),
 
-  extract: async (text: string): Promise<ExtractResponse> => {
-    const res = await fetch(`${BASE_URL}/api/extract`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text: text ?? "",
-      }),
-    });
+  // Concerns
+  getConcerns:        ()                          => get<{ concerns: ConcernLog[] }>(ROUTES.concerns),
+  getArchivedConcerns:()                          => get<{ concerns: ConcernLog[] }>(ROUTES.concernArchived),
+  logConcern:         (data: NewConcernInput)     => post<ConcernLog>(ROUTES.concerns, data),
+  updateConcern:      (id: string, data: ConcernUpdateInput) => patch<ConcernLog>(ROUTES.concern(id), data),
+  deleteConcern:      (id: string)                => del<void>(ROUTES.concern(id)),
+  archiveConcern:     (id: string)                => post<{status:string}>(ROUTES.concernArchive(id), {}),
+  restoreConcern:     (id: string)                => post<{status:string}>(ROUTES.concernRestore(id), {}),
 
-    return handleResponse<ExtractResponse>(res);
-  },
+  // Timeline
+  getTimeline:        ()                          => get<{ timeline: TimelineEntry[] }>(ROUTES.timeline),
+  saveTimelineEntry:  (data: Omit<TimelineEntry, 'id'|'archived'|'archived_at'>) =>
+    post<TimelineEntry>(ROUTES.timeline, data),
+  archiveTimelineEntry:(id: string)               => post<{status:string}>(ROUTES.timelineArchive(id), {}),
+  restoreTimelineEntry:(id: string)               => post<{status:string}>(ROUTES.timelineRestore(id), {}),
 
-  timeline: async (): Promise<TimelineEntry[]> => {
-    const res = await fetch(`${BASE_URL}/api/timeline`);
-    return handleResponse<TimelineEntry[]>(res);
-  },
+  // Demo chain
+  runAgentChain: (data: {
+    body_area: string; symptom: string;
+    urgency_level: UrgencyLevel; severity: number;
+    notes?: string;
+  }) => post<AgentChainResult>(ROUTES.agentChain, data),
 };

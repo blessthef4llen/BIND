@@ -1,78 +1,49 @@
 /**
- * app/visit-prep.tsx — Visit Prep results screen
+ * app/visit-prep.tsx — AI Visit Prep results
  *
- * API contract implemented:
- *   Receives params.result from POST /api/prep
- *   Response shape: { symptom_summary, questions_to_ask: string[], concerns_to_mention: { area, urgency }[] }
- *
- * If navigated to directly (no params), falls back to mock POST /api/prep with sample data.
- * Urgency values: 'high' | 'medium' | 'low'
+ * Redesigned with warm red/white/charcoal brand.
+ * Shows IBM Granite analysis: symptom summary, concerns, questions.
  */
 
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import Svg, { Path } from 'react-native-svg';
-import { Colors, Fonts, FontSize, Radius } from '../constants/theme';
-import AIChip from '../components/ui/AIChip';
-import UrgencyDot from '../components/ui/UrgencyDot';
-import Badge from '../components/ui/Badge';
-import QuestionItem from '../components/ui/QuestionItem';
-import { PrimaryButton } from '../components/ui/PrimaryButton';
-import { OutlineButton } from '../components/ui/OutlineButton';
-import { ROUTES } from '../constants/api';
+import Svg, { Path, Circle } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, FONTS, FontSize, Radius, Shadow } from '../constants/theme';
+import { api, VisitPrepResponse } from '../services/api';
 
-// ─── Types ────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type UrgencyLevel = 'high' | 'medium' | 'low';
 
-interface ConcernToMention {
-  area: string;
-  urgency: UrgencyLevel;
-}
+interface ConcernToMention { area: string; urgency: UrgencyLevel; }
 
-interface PrepResult {
-  symptom_summary: string;
-  questions_to_ask: string[];
-  concerns_to_mention: ConcernToMention[];
-}
+// ─── Mock fallback ────────────────────────────────────────────────────────────
 
-// ─── Constants ────────────────────────────────────────────────────────────
-
-const URGENCY_BADGE: Record<UrgencyLevel, 'red' | 'amber' | 'teal'> = {
-  high: 'red', medium: 'amber', low: 'teal',
-};
-
-// Mock data for fallback (direct navigation with no params)
-const MOCK_RESULT: PrepResult = {
-  symptom_summary:
-    'Patient reports left ankle pain of 3 days duration with moderate-to-high urgency. ' +
-    'Pain is described as sharp and throbbing, worsening on weight-bearing activities.',
+const MOCK: VisitPrepResponse = {
+  symptom_summary: 'You reported left ankle pain that has been present for 3 days, worsening with activity. You marked this as high urgency.',
   questions_to_ask: [
-    'What could be causing my ankle pain, and what should I avoid doing?',
-    'Is this likely muscular, structural, or nerve-related?',
-    'Should I get imaging done given the severity and duration?',
-    'What at-home treatments are safe before my next visit?',
+    'What could be causing this ankle pain — structural, nerve, or muscular?',
+    'Should I get imaging done given the severity?',
+    'What at-home treatments are safe while I wait for my appointment?',
+    'Are there any warning signs I should watch for?',
   ],
   concerns_to_mention: [
     { area: 'Left Foot / Ankle', urgency: 'high'   },
     { area: 'Head / Neck',       urgency: 'medium'  },
-    { area: 'Right Foot',        urgency: 'low'     },
   ],
 };
 
-// Mock payload used when hitting the API as a fallback
-const MOCK_REQUEST_PAYLOAD = {
-  body_area:           'Left Foot / Ankle',
-  start_time:          '3 days ago',
-  concern_description: 'Sharp throbbing ankle pain, worse when walking.',
-  urgency:             'high',
-  additional_message:  '',
+// ─── Urgency config ───────────────────────────────────────────────────────────
+
+const URGENCY_STYLE: Record<UrgencyLevel, { dot: string; bg: string; text: string; label: string }> = {
+  high:   { dot: Colors.urgent,  bg: Colors.redLight,     text: Colors.redDark,  label: 'HIGH'   },
+  medium: { dot: Colors.warning, bg: Colors.warningLight, text: '#7A4A10',       label: 'MEDIUM' },
+  low:    { dot: Colors.ok,      bg: Colors.okLight,      text: '#1A6B40',       label: 'LOW'    },
 };
 
-// ─── GraniteLabel sub-component ───────────────────────────────────────────
+// ─── Section label ────────────────────────────────────────────────────────────
 
 function GraniteLabel({ text }: { text: string }) {
   return (
@@ -82,159 +53,160 @@ function GraniteLabel({ text }: { text: string }) {
     </View>
   );
 }
-
 const gl = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
-  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.teal },
-  txt: { fontFamily: Fonts.sansSemiBold, fontSize: FontSize.tiny, color: Colors.teal, letterSpacing: 0.4 },
+  row: { flexDirection:'row', alignItems:'center', gap:5, marginBottom:6 },
+  dot: { width:5, height:5, borderRadius:3, backgroundColor: Colors.red },
+  txt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.red, letterSpacing:0.8, textTransform:'uppercase' },
 });
 
-// ─── Screen ───────────────────────────────────────────────────────────────
+// ─── Question item ────────────────────────────────────────────────────────────
+
+function QuestionItem({ number, text, isLast }: { number:number; text:string; isLast?:boolean }) {
+  return (
+    <View style={[qi.row, !isLast && qi.divider]}>
+      <View style={qi.num}>
+        <Text style={qi.numTxt}>{number}</Text>
+      </View>
+      <Text style={qi.text}>{text}</Text>
+    </View>
+  );
+}
+const qi = StyleSheet.create({
+  row:    { flexDirection:'row', alignItems:'flex-start', gap:10, paddingVertical:12 },
+  divider:{ borderBottomWidth:1, borderBottomColor: Colors.border },
+  num:    { width:22, height:22, borderRadius:11, backgroundColor: Colors.redLight, alignItems:'center', justifyContent:'center', marginTop:1 },
+  numTxt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.micro, color: Colors.red },
+  text:   { flex:1, fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.text, lineHeight:21 },
+});
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function VisitPrepScreen() {
   const params = useLocalSearchParams<{ result?: string }>();
-  const [prep,    setPrep]    = useState<PrepResult | null>(null);
+  const insets = useSafeAreaInsets();
+  const [prep,    setPrep]    = useState<VisitPrepResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (params.result) {
-      try {
-        const parsed = JSON.parse(params.result);
-        setPrep(parsed);
-      } catch {
-        setPrep(MOCK_RESULT);
-      }
+      try { setPrep(JSON.parse(params.result)); } catch { setPrep(MOCK); }
     }
   }, [params.result]);
 
-  // Fallback: called when user arrives with no result param
-  async function handleGenerate() {
+  async function generate() {
     setLoading(true);
     try {
-      const response = await fetch(ROUTES.prep, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(MOCK_REQUEST_PAYLOAD),
-      });
-      if (!response.ok) throw new Error('Server error');
-      const data: PrepResult = await response.json();
+      const data = await fetch(`http://localhost:8000/api/prep`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body_area:'General', start_time:'', concern_description:'General health concern', urgency:'low', additional_message:'' }),
+      }).then(r => r.json());
       setPrep(data);
     } catch {
-      setPrep(MOCK_RESULT);
+      setPrep(MOCK);
     } finally {
       setLoading(false);
     }
   }
 
-  // Use live data if available, otherwise fall back to MOCK for display structure
-  const data = prep ?? MOCK_RESULT;
+  const data = prep ?? MOCK;
 
   return (
     <View style={styles.root}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
 
-        {/* ── Dark hero header ─────────────────────────────────────── */}
-        <View style={styles.hero}>
+        {/* Dark hero */}
+        <View style={[styles.hero, { paddingTop: insets.top + 16 }]}>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Svg width={18} height={18} viewBox="0 0 18 18">
-              <Path
-                d="M11 4L6 9l5 5"
-                stroke="rgba(255,255,255,0.6)"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
+              <Path d="M11 4L6 9l5 5" stroke="rgba(255,255,255,0.6)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </Svg>
             <Text style={styles.backTxt}>Back</Text>
           </Pressable>
 
-          <AIChip label="IBM Granite · Active" />
+          {/* IBM Granite chip */}
+          <View style={styles.chip}>
+            <View style={styles.chipDot} />
+            <Text style={styles.chipTxt}>IBM Granite · Active</Text>
+          </View>
 
           <Text style={styles.heroTitle}>YOUR{'\n'}VISIT PREP</Text>
           <Text style={styles.heroSub}>
-            IBM Granite analyzed your concern and generated personalized insights
+            IBM Granite analyzed your concern and generated personalized insights.{'\n'}
+            <Text style={{ fontStyle:'italic', opacity:0.6 }}>Pulse does not diagnose.</Text>
           </Text>
         </View>
 
         <View style={styles.body}>
 
-          {/* ── No result yet: show Generate CTA ─────────────────── */}
+          {/* No result yet */}
           {!prep && (
-            <View style={styles.generateCard}>
-              <GraniteLabel text="IBM GRANITE · READY TO ANALYZE" />
-              <Text style={styles.generateTitle}>Generate your personalized visit prep</Text>
-              <Text style={styles.generateBody}>
-                IBM Granite will analyze your concern and create a tailored summary and question list for your doctor.
-              </Text>
-              <PrimaryButton
-                label={loading ? 'Analyzing…' : 'Generate Visit Prep'}
-                onPress={handleGenerate}
-                loading={loading}
-                style={{ marginTop: 16 }}
-              />
+            <View style={styles.genCard}>
+              <GraniteLabel text="IBM Granite · Ready" />
+              <Text style={styles.genTitle}>Generate your personalized visit prep</Text>
+              <Text style={styles.genBody}>IBM Granite will analyze your concern and create tailored questions and a summary for your doctor.</Text>
+              <Pressable
+                style={({ pressed }) => [styles.genBtn, pressed && { opacity:0.85 }]}
+                onPress={generate}
+                disabled={loading}
+              >
+                {loading
+                  ? <ActivityIndicator color={Colors.white} />
+                  : <Text style={styles.genBtnTxt}>GENERATE VISIT PREP</Text>
+                }
+              </Pressable>
             </View>
           )}
 
-          {/* ── Section 1: What IBM Granite found ────────────────── */}
+          {/* Section 1: Summary */}
           <View style={styles.section}>
-            <GraniteLabel text="IBM GRANITE · WHAT WAS FOUND" />
-            <Text style={styles.sectionTitle}>What IBM Granite found</Text>
+            <GraniteLabel text="IBM Granite · What Was Found" />
+            <Text style={styles.sectionTitle}>Summary of your concern</Text>
             <View style={styles.card}>
               <Text style={styles.summaryText}>{data.symptom_summary}</Text>
             </View>
           </View>
 
-          {/* ── Section 2: Concerns to mention ───────────────────── */}
-          <View style={styles.section}>
-            <GraniteLabel text="IBM GRANITE · RANKED BY URGENCY" />
-            <Text style={styles.sectionTitle}>Bring these up with your doctor</Text>
-            <View style={styles.card}>
-              {data.concerns_to_mention.map((c, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.concernRow,
-                    i < data.concerns_to_mention.length - 1 && styles.concernDivider,
-                  ]}
-                >
-                  <UrgencyDot level={c.urgency} />
-                  <Text style={styles.concernArea}>{c.area}</Text>
-                  <Badge
-                    label={c.urgency === 'medium' ? 'Med' : c.urgency}
-                    variant={URGENCY_BADGE[c.urgency]}
-                  />
-                </View>
-              ))}
+          {/* Section 2: Concerns to mention */}
+          {data.concerns_to_mention.length > 0 && (
+            <View style={styles.section}>
+              <GraniteLabel text="IBM Granite · Ranked by Urgency" />
+              <Text style={styles.sectionTitle}>Bring these up with your doctor</Text>
+              <View style={styles.card}>
+                {data.concerns_to_mention.map((c, i) => {
+                  const ust = URGENCY_STYLE[c.urgency] || URGENCY_STYLE.low;
+                  return (
+                    <View key={i} style={[cm.row, i < data.concerns_to_mention.length - 1 && cm.divider]}>
+                      <View style={[cm.dot, { backgroundColor: ust.dot }]} />
+                      <Text style={cm.area}>{c.area}</Text>
+                      <View style={[cm.badge, { backgroundColor: ust.bg }]}>
+                        <Text style={[cm.badgeTxt, { color: ust.text }]}>{ust.label}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
-          </View>
+          )}
 
-          {/* ── Section 3: Questions to ask ──────────────────────── */}
+          {/* Section 3: Questions */}
           <View style={styles.section}>
-            <GraniteLabel text="IBM GRANITE · GENERATED FROM YOUR CONCERN" />
+            <GraniteLabel text="IBM Granite · Generated Questions" />
             <Text style={styles.sectionTitle}>Questions to ask your doctor</Text>
-            <Text style={styles.sectionSub}>
-              These questions were written specifically based on what you described — not generic advice.
-            </Text>
+            <Text style={styles.sectionSub}>Written specifically for your concern — not generic advice.</Text>
             <View style={styles.card}>
               {data.questions_to_ask.map((q, i) => (
-                <QuestionItem
-                  key={i}
-                  number={i + 1}
-                  text={q}
-                  isLast={i === data.questions_to_ask.length - 1}
-                />
+                <QuestionItem key={i} number={i + 1} text={q} isLast={i === data.questions_to_ask.length - 1} />
               ))}
             </View>
           </View>
 
-          {/* ── Actions ──────────────────────────────────────────── */}
-          <View style={styles.actions}>
-            <OutlineButton
-              label="Upload Doctor Notes After Visit"
-              onPress={() => router.push('/doctor-notes')}
-            />
-          </View>
+          {/* CTA */}
+          <Pressable
+            style={({ pressed }) => [styles.ctaBtn, pressed && { opacity:0.85 }]}
+            onPress={() => router.push('/doctor-notes')}
+          >
+            <Text style={styles.ctaTxt}>Upload Doctor Notes After Visit</Text>
+          </Pressable>
 
         </View>
       </ScrollView>
@@ -242,36 +214,42 @@ export default function VisitPrepScreen() {
   );
 }
 
+const cm = StyleSheet.create({
+  row:      { flexDirection:'row', alignItems:'center', gap:10, paddingVertical:11 },
+  divider:  { borderBottomWidth:1, borderBottomColor: Colors.border },
+  dot:      { width:8, height:8, borderRadius:4 },
+  area:     { flex:1, fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.text },
+  badge:    { borderRadius: Radius.xs, paddingHorizontal:8, paddingVertical:3 },
+  badgeTxt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.micro, textTransform:'uppercase', letterSpacing:0.5 },
+});
+
 const styles = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: Colors.bg },
-  scroll: { paddingBottom: 48 },
+  root:  { flex:1, backgroundColor: Colors.offWhite },
 
-  // Hero
-  hero:      { backgroundColor: Colors.darkBg, paddingHorizontal: 22, paddingTop: 56, paddingBottom: 28 },
-  backBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 20 },
-  backTxt:   { fontFamily: Fonts.sansMedium, fontSize: FontSize.body, color: 'rgba(255,255,255,0.6)' },
-  heroTitle: { fontFamily: Fonts.serif, fontSize: 42, color: '#FFFFFF', lineHeight: 46, marginTop: 14, marginBottom: 10 },
-  heroSub:   { fontFamily: Fonts.sans, fontSize: FontSize.small, color: 'rgba(255,255,255,0.5)', lineHeight: 19 },
+  hero:  { backgroundColor: Colors.black, paddingHorizontal:22, paddingBottom:28 },
+  backBtn: { flexDirection:'row', alignItems:'center', gap:4, marginBottom:20 },
+  backTxt: { fontFamily: FONTS.sansMedium, fontSize: FontSize.body, color:'rgba(255,255,255,0.60)' },
+  chip:    { flexDirection:'row', alignItems:'center', gap:5, backgroundColor:'rgba(201,64,64,0.18)', borderWidth:1, borderColor:'rgba(201,64,64,0.35)', borderRadius: Radius.pill, paddingVertical:4, paddingHorizontal:10, alignSelf:'flex-start', marginBottom:14 },
+  chipDot: { width:5, height:5, borderRadius:3, backgroundColor: Colors.redMid },
+  chipTxt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.redMid, letterSpacing:0.4 },
+  heroTitle:{ fontFamily: FONTS.display, fontSize:40, color: Colors.white, lineHeight:42, marginBottom:10, letterSpacing:0.5 },
+  heroSub:  { fontFamily: FONTS.body, fontSize: FontSize.small, color:'rgba(255,255,255,0.48)', lineHeight:19 },
 
-  body: { paddingHorizontal: 20, paddingTop: 20 },
+  body:  { paddingHorizontal:20, paddingTop:20 },
 
-  // Generate fallback card
-  generateCard:  { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: Colors.borderStrong },
-  generateTitle: { fontFamily: Fonts.serif, fontSize: 20, color: Colors.text, marginBottom: 8 },
-  generateBody:  { fontFamily: Fonts.sans, fontSize: FontSize.body, color: Colors.textMuted, lineHeight: 21 },
+  genCard:  { backgroundColor: Colors.surface, borderRadius: Radius.md, padding:18, marginBottom:16, borderWidth:1, borderColor: Colors.border, ...Shadow.sm },
+  genTitle: { fontFamily: FONTS.display, fontSize:22, color: Colors.text, marginBottom:8, letterSpacing:0.5 },
+  genBody:  { fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.textMuted, lineHeight:21, marginBottom:16 },
+  genBtn:   { backgroundColor: Colors.red, borderRadius: Radius.sm, paddingVertical:13, alignItems:'center' },
+  genBtnTxt:{ fontFamily: FONTS.display, fontSize:20, letterSpacing:2, color: Colors.white },
 
-  // Sections
-  section:      { marginBottom: 20 },
-  sectionTitle: { fontFamily: Fonts.serif, fontSize: 18, color: Colors.text, marginBottom: 4 },
-  sectionSub:   { fontFamily: Fonts.sans, fontSize: FontSize.small, color: Colors.textMuted, marginBottom: 10, lineHeight: 18 },
+  section:     { marginBottom:22 },
+  sectionTitle:{ fontFamily: FONTS.display, fontSize:22, color: Colors.text, marginBottom:4, letterSpacing:0.3 },
+  sectionSub:  { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.textMuted, marginBottom:10, lineHeight:18 },
 
-  card: { backgroundColor: Colors.surface, borderRadius: Radius.sm, padding: 14, borderWidth: 1, borderColor: Colors.border },
+  card:        { backgroundColor: Colors.surface, borderRadius: Radius.sm, paddingHorizontal:14, paddingVertical:4, borderWidth:1, borderColor: Colors.border },
+  summaryText: { fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.text, lineHeight:22, paddingVertical:12 },
 
-  summaryText: { fontFamily: Fonts.sans, fontSize: FontSize.body, color: Colors.text, lineHeight: 22 },
-
-  concernRow:     { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  concernDivider: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  concernArea:    { flex: 1, fontFamily: Fonts.sans, fontSize: FontSize.body, color: Colors.text },
-
-  actions: { gap: 0, marginTop: 4 },
+  ctaBtn:  { borderWidth:1.5, borderColor: Colors.red, borderRadius: Radius.sm, paddingVertical:13, alignItems:'center', marginTop:4 },
+  ctaTxt:  { fontFamily: FONTS.bodySemi, fontSize: FontSize.body, color: Colors.red },
 });

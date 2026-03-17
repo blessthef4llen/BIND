@@ -1,59 +1,148 @@
 /**
  * app/(tabs)/timeline.js — Post-visit health timeline
  *
- * API contract implemented:
- *   GET /api/timeline
- *   Response: { timeline: [] }
- *   Each item: { visit_date, diagnosis, prescriptions: string[], key_advice: string[], follow_up_date }
- *
- * IMPORTANT: This screen shows post-appointment records ONLY (extracted from doctor notes).
- * Pre-visit concern logs are NOT shown here.
- *
- * Empty state provides a link to upload doctor notes.
+ * Redesigned with warm red/white/charcoal brand.
+ * Shows post-appointment records with archive support.
+ * GET /api/timeline — most recent first.
  */
 
 import { useState, useCallback } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
-  StatusBar, ActivityIndicator, Pressable,
+  View, Text, ScrollView, StyleSheet, StatusBar,
+  ActivityIndicator, Pressable, Alert,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { C, FONTS } from '../../constants/colors';
-import { ROUTES } from '../../constants/api';
+import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import { Colors, FONTS, FontSize, Radius, Shadow } from '../../constants/theme';
+import { api } from '../../services/api';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-/** Format an ISO date string (YYYY-MM-DD) as "Mar 17, 2026" */
-function formatVisitDate(dateStr) {
+// ─── Date formatter ───────────────────────────────────────────────────────────
+function fmtDate(dateStr) {
   if (!dateStr) return 'Unknown Date';
   try {
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  } catch { return dateStr; }
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────
+// ─── Timeline entry card ──────────────────────────────────────────────────────
+function RecordCard({ item, onArchive }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <View style={rc.card}>
+      {/* Date row */}
+      <View style={rc.dateRow}>
+        <View style={rc.dateDot} />
+        <Text style={rc.dateText}>{fmtDate(item.visit_date)}</Text>
+        <Pressable style={rc.archBtn} onPress={() => onArchive(item)} hitSlop={8}>
+          <Svg width={14} height={14} viewBox="0 0 14 14">
+            <Rect x={1} y={4} width={12} height={9} rx={1.5} stroke={Colors.textFaint} strokeWidth={1.2} fill="none" />
+            <Path d="M1 4h12M5 7v3M9 7v3" stroke={Colors.textFaint} strokeWidth={1.2} strokeLinecap="round" fill="none" />
+            <Rect x={4.5} y={1.5} width={5} height={2.5} rx={1} stroke={Colors.textFaint} strokeWidth={1.2} fill="none" />
+          </Svg>
+        </Pressable>
+      </View>
+
+      {/* Diagnosis */}
+      <Pressable onPress={() => setExpanded(e => !e)}>
+        <Text style={rc.diagnosis}>{item.diagnosis}</Text>
+
+        {/* Prescriptions preview */}
+        {!expanded && item.prescriptions?.length > 0 && (
+          <Text style={rc.preview} numberOfLines={1}>
+            Rx: {item.prescriptions.slice(0, 2).join(' · ')}
+            {item.prescriptions.length > 2 ? ` +${item.prescriptions.length - 2} more` : ''}
+          </Text>
+        )}
+
+        {/* Expanded detail */}
+        {expanded && (
+          <View style={rc.detail}>
+            {item.prescriptions?.length > 0 && (
+              <View style={rc.section}>
+                <Text style={rc.sectionLbl}>PRESCRIPTIONS</Text>
+                {item.prescriptions.map((rx, i) => (
+                  <View key={i} style={rc.listRow}>
+                    <Text style={rc.rxLabel}>Rx</Text>
+                    <Text style={rc.listTxt}>{rx}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {item.key_advice?.length > 0 && (
+              <View style={rc.section}>
+                <Text style={rc.sectionLbl}>DOCTOR'S ADVICE</Text>
+                {item.key_advice.map((tip, i) => (
+                  <View key={i} style={rc.listRow}>
+                    <View style={rc.bullet} />
+                    <Text style={rc.listTxt}>{tip}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {!!item.follow_up_date && (
+              <View style={rc.followupRow}>
+                <Svg width={14} height={14} viewBox="0 0 14 14">
+                  <Rect x={2} y={3} width={10} height={10} rx={1.5} stroke={Colors.red} strokeWidth={1.3} fill="none" />
+                  <Path d="M5 1.5v2M9 1.5v2M2 6.5h10" stroke={Colors.red} strokeWidth={1.3} strokeLinecap="round" />
+                </Svg>
+                <Text style={rc.followupLbl}>Follow-up:</Text>
+                <Text style={rc.followupVal}>{item.follow_up_date}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Expand chevron */}
+        <View style={rc.chevron}>
+          <Svg width={14} height={14} viewBox="0 0 14 14">
+            <Path d={expanded ? 'M3 9l4-4 4 4' : 'M3 5l4 4 4-4'} stroke={Colors.textFaint} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          </Svg>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
+const rc = StyleSheet.create({
+  card:       { backgroundColor: Colors.surface, borderRadius: Radius.md, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: Colors.border, ...Shadow.sm },
+  dateRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  dateDot:    { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.red },
+  dateText:   { flex: 1, fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
+  archBtn:    { padding: 4 },
+  diagnosis:  { fontFamily: FONTS.bodySemi, fontSize: FontSize.medium, color: Colors.text, marginBottom: 6 },
+  preview:    { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.textFaint },
+  detail:     { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
+  section:    { marginBottom: 12 },
+  sectionLbl: { fontFamily: FONTS.bodySemi, fontSize: FontSize.micro, color: Colors.textFaint, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
+  listRow:    { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 4 },
+  rxLabel:    { fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.red, minWidth: 20 },
+  bullet:     { width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.textFaint, marginTop: 8, flexShrink: 0 },
+  listTxt:    { flex: 1, fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.text, lineHeight: 20 },
+  followupRow:{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.border },
+  followupLbl:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.small, color: Colors.textMuted },
+  followupVal:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.body, color: Colors.text },
+  chevron:    { alignItems: 'flex-end', marginTop: 6 },
+});
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function TimelineScreen() {
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const insets  = useSafeAreaInsets();
+  const router  = useRouter();
   const [timeline, setTimeline] = useState([]);
   const [loading,  setLoading]  = useState(true);
 
-  // Reload every time the tab gains focus
-  useFocusEffect(
-    useCallback(() => { load(); }, [])
-  );
+  useFocusEffect(useCallback(() => { load(); }, []));
 
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(ROUTES.timeline);
-      const d = await r.json();
-      // API returns { timeline: [] } — most recent first
+      const d = await api.getTimeline();
       setTimeline(Array.isArray(d.timeline) ? d.timeline : []);
     } catch {
       setTimeline([]);
@@ -62,16 +151,43 @@ export default function TimelineScreen() {
     }
   }
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.white} />
+  async function handleArchive(item) {
+    Alert.alert(
+      'Archive this record?',
+      `"${item.diagnosis}" will be archived. You can restore it anytime.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Archive', style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.archiveTimelineEntry(item.id);
+              setTimeline(prev => prev.filter(t => t.id !== item.id));
+            } catch {
+              Alert.alert('Error', 'Could not archive — is the server running?');
+            }
+          },
+        },
+      ]
+    );
+  }
 
-      {/* ── Top bar ─────────────────────────────────────────────────── */}
-      <View style={styles.topBar}>
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.offWhite} />
+
+      {/* Header */}
+      <View style={styles.header}>
         <View>
-          <Text style={styles.topTitle}>TIMELINE</Text>
-          <Text style={styles.topSub}>Your post-appointment health records</Text>
+          <Text style={styles.title}>TIMELINE</Text>
+          <Text style={styles.subtitle}>Your post-appointment health records</Text>
         </View>
+        {!loading && timeline.length > 0 && (
+          <View style={styles.countBadge}>
+            <Text style={styles.countNum}>{timeline.length}</Text>
+            <Text style={styles.countLbl}>visits</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView
@@ -79,85 +195,38 @@ export default function TimelineScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
-        {/* ── IBM Granite strip (shown when records exist) ──────────── */}
-        {!loading && timeline.length >= 1 && (
-          <View style={styles.graniteStrip}>
-            <View style={styles.graniteDot} />
-            <Text style={styles.graniteText}>
+        {/* IBM strip */}
+        {!loading && timeline.length > 0 && (
+          <View style={styles.ibmStrip}>
+            <View style={styles.ibmDot} />
+            <Text style={styles.ibmTxt}>
               IBM Granite extracted these records from your doctor notes
             </Text>
           </View>
         )}
 
-        {/* ── Loading ───────────────────────────────────────────────── */}
+        {/* Content */}
         {loading ? (
-          <ActivityIndicator color={C.red} style={{ padding: 40 }} />
+          <ActivityIndicator color={Colors.red} style={{ padding: 40 }} />
 
-        /* ── Empty state ────────────────────────────────────────────── */
         ) : timeline.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyTitle}>No post-visit records yet.</Text>
+            <Text style={styles.emptyTitle}>No post-visit records yet</Text>
             <Text style={styles.emptyBody}>
               After your appointment, upload your doctor notes to build your timeline.
             </Text>
-            {/* Simple Pressable with red border — avoids importing OutlineButton from tabs */}
             <Pressable
-              style={({ pressed }) => [styles.uploadBtn, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [styles.uploadBtn, pressed && { opacity: 0.8 }]}
               onPress={() => router.push('/doctor-notes')}
             >
               <Text style={styles.uploadBtnTxt}>Upload Doctor Notes</Text>
             </Pressable>
           </View>
 
-        /* ── Record list ─────────────────────────────────────────────── */
         ) : (
           <View style={styles.list}>
-            {timeline.map((item, index) => (
-              <View key={index} style={styles.recordCard}>
-
-                {/* Date header */}
-                <View style={styles.dateHeader}>
-                  <View style={styles.dateDot} />
-                  <Text style={styles.dateText}>{formatVisitDate(item.visit_date)}</Text>
-                </View>
-
-                {/* Diagnosis */}
-                <Text style={styles.diagnosisTitle}>{item.diagnosis}</Text>
-
-                {/* Prescriptions */}
-                {Array.isArray(item.prescriptions) && item.prescriptions.length > 0 && (
-                  <View style={styles.subsection}>
-                    <Text style={styles.subsectionLabel}>PRESCRIPTIONS</Text>
-                    {item.prescriptions.map((rx, i) => (
-                      <View key={i} style={styles.listRow}>
-                        <Text style={styles.listBullet}>Rx</Text>
-                        <Text style={styles.listText}>{rx}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Key advice */}
-                {Array.isArray(item.key_advice) && item.key_advice.length > 0 && (
-                  <View style={styles.subsection}>
-                    <Text style={styles.subsectionLabel}>DOCTOR'S ADVICE</Text>
-                    {item.key_advice.map((tip, i) => (
-                      <View key={i} style={styles.listRow}>
-                        <View style={styles.bulletDot} />
-                        <Text style={styles.listText}>{tip}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Follow-up date */}
-                {!!item.follow_up_date && (
-                  <View style={styles.followupRow}>
-                    <Text style={styles.followupLabel}>Follow-up:</Text>
-                    <Text style={styles.followupValue}>{item.follow_up_date}</Text>
-                  </View>
-                )}
-              </View>
+            {timeline.map((item, i) => (
+              <RecordCard key={item.id || i} item={item} onArchive={handleArchive} />
             ))}
           </View>
         )}
@@ -167,83 +236,26 @@ export default function TimelineScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.white },
+  root:    { flex: 1, backgroundColor: Colors.offWhite },
 
-  topBar:   { paddingHorizontal: 20, paddingVertical: 12 },
-  topTitle: { fontFamily: FONTS.display, fontSize: 32, color: C.black, letterSpacing: 1 },
-  topSub:   { fontSize: 12, color: C.gray400, fontFamily: FONTS.body, marginTop: 1 },
+  header:    { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  title:     { fontFamily: FONTS.display, fontSize: 30, color: Colors.black, letterSpacing: 1 },
+  subtitle:  { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.textMuted, marginTop: 2 },
+  countBadge:{ alignItems: 'center', backgroundColor: Colors.surface, borderRadius: Radius.sm, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: Colors.border },
+  countNum:  { fontFamily: FONTS.display, fontSize: 22, color: Colors.black },
+  countLbl:  { fontFamily: FONTS.body, fontSize: FontSize.micro, color: Colors.textFaint, textTransform: 'uppercase', letterSpacing: 1 },
 
   scroll: { flex: 1, paddingHorizontal: 20 },
 
-  // IBM Granite attribution strip
-  graniteStrip: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             6,
-    backgroundColor: C.gray100,
-    borderRadius:    6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom:    16,
-    borderWidth:     1,
-    borderColor:     C.gray200,
-  },
-  graniteDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1D9E75' },
-  graniteText: { flex: 1, fontSize: 11, color: C.gray400, fontFamily: FONTS.body, lineHeight: 15 },
+  ibmStrip: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: Colors.okLight, borderRadius: Radius.xs, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 14, borderWidth: 1, borderColor: Colors.ok + '44' },
+  ibmDot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.ok },
+  ibmTxt:   { flex: 1, fontFamily: FONTS.body, fontSize: FontSize.tiny, color: '#1A6B40' },
 
-  // Empty state
   emptyWrap:  { paddingTop: 48, alignItems: 'center', paddingHorizontal: 24 },
-  emptyTitle: { fontFamily: FONTS.bodySemi, fontSize: 16, color: C.black, marginBottom: 10, textAlign: 'center' },
-  emptyBody:  { fontFamily: FONTS.body, fontSize: 13, color: C.gray400, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  uploadBtn:  {
-    borderWidth:     1.5,
-    borderColor:     C.red,
-    borderRadius:    8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems:      'center',
-  },
-  uploadBtnTxt: { fontFamily: FONTS.bodySemi, fontSize: 14, color: C.red },
+  emptyTitle: { fontFamily: FONTS.bodySemi, fontSize: FontSize.medium, color: Colors.text, marginBottom: 10, textAlign: 'center' },
+  emptyBody:  { fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.textMuted, textAlign: 'center', lineHeight: 21, marginBottom: 24 },
+  uploadBtn:  { borderWidth: 1.5, borderColor: Colors.red, borderRadius: Radius.sm, paddingVertical: 12, paddingHorizontal: 24 },
+  uploadBtnTxt:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.body, color: Colors.red },
 
-  // Record list
-  list: { gap: 12 },
-
-  recordCard: {
-    backgroundColor: C.white,
-    borderRadius:    12,
-    borderWidth:     1,
-    borderColor:     C.gray200,
-    padding:         14,
-    paddingHorizontal: 16,
-    marginBottom:    4,
-  },
-
-  // Date header row
-  dateHeader: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    gap:            8,
-    marginBottom:   8,
-    paddingBottom:  8,
-    borderBottomWidth: 1,
-    borderBottomColor: C.gray200,
-  },
-  dateDot:  { width: 8, height: 8, borderRadius: 4, backgroundColor: C.red },
-  dateText: { fontFamily: FONTS.bodySemi, fontSize: 12, color: C.gray400, letterSpacing: 0.5, textTransform: 'uppercase' },
-
-  diagnosisTitle: { fontFamily: FONTS.bodyMedium, fontSize: 16, color: C.black, marginBottom: 10 },
-
-  // Subsection (prescriptions / advice)
-  subsection:      { marginBottom: 10 },
-  subsectionLabel: { fontFamily: FONTS.bodySemi, fontSize: 10, color: C.gray400, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5 },
-
-  listRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 4 },
-  listBullet:{ fontFamily: FONTS.bodySemi, fontSize: 11, color: C.red, minWidth: 18 },
-  bulletDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.gray400, marginTop: 7, flexShrink: 0 },
-  listText:  { flex: 1, fontFamily: FONTS.body, fontSize: 13, color: C.black, lineHeight: 19 },
-
-  // Follow-up
-  followupRow:  { flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.gray200 },
-  followupLabel:{ fontFamily: FONTS.bodySemi, fontSize: 11, color: C.gray400 },
-  followupValue:{ fontFamily: FONTS.bodyMedium, fontSize: 13, color: C.black },
+  list: { gap: 0 },
 });

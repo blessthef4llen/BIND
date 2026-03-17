@@ -1,66 +1,163 @@
-import { View, Text, Pressable, StyleSheet, StatusBar } from 'react-native';
+/**
+ * app/index.js — PULSE Splash / Entry
+ *
+ * Mission-centered redesign. Warm red/white/charcoal brand.
+ * Animated ECG heartbeat logo with soft pulse effect.
+ */
+
+import { useEffect, useRef } from 'react';
+import {
+  View, Text, Pressable, StyleSheet, StatusBar,
+  Animated, Easing, Dimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import Svg, { Polyline, Path } from 'react-native-svg';
-import { C, FONTS } from '../constants/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Polyline, Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { Colors, FONTS, FontSize, Radius, Shadow } from '../constants/theme';
 
-const FEATURES = [
-  'Tap your body to log where it hurts',
-  'IBM Granite detects patterns over time',
-  'Autonomous agents prep your doctor visit',
-];
+const { width } = Dimensions.get('window');
 
-function EcgLogo() {
+// ── Animated ECG + Heart logo ────────────────────────────────────────────────
+
+function PulseLogo() {
+  const pulse   = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const slideY  = useRef(new Animated.Value(12)).current;
+
+  useEffect(() => {
+    // Entrance
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(slideY,  { toValue: 0, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+
+    // Pulse loop
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.04, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.00, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
   return (
-    <Svg viewBox="0 0 340 120" width={220} height={78} style={styles.ecgLogo}>
-      <Polyline
-        points="0,60 30,60 40,60 50,30 60,90 70,10 80,90 90,60 110,60"
-        stroke={C.red} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none"
-      />
-      <Path
-        d="M145,45 C145,38 152,32 160,36 C162,37 164,39 165,42 C166,39 168,37 170,36 C178,32 185,38 185,45 C185,52 178,60 165,70 C152,60 145,52 145,45Z"
-        stroke={C.red} strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round"
-      />
-      <Polyline
-        points="190,60 210,60 220,30 230,90 240,20 250,80 260,60 280,60 310,60 340,60"
-        stroke={C.red} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none"
-      />
-    </Svg>
+    <Animated.View style={{ opacity, transform: [{ translateY: slideY }, { scale: pulse }] }}>
+      <Svg viewBox="0 0 320 100" width={width * 0.72} height={(width * 0.72) * 0.31}>
+        {/* ECG left */}
+        <Polyline
+          points="0,50 28,50 38,50 46,22 56,78 64,8 74,78 82,50 100,50"
+          stroke={Colors.red}
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        {/* Heart */}
+        <Path
+          d="M138,36 C138,29 145,23 153,27 C155,28 157,30 158,33 C159,30 161,28 163,27 C171,23 178,29 178,36 C178,43 171,51 158,61 C145,51 138,43 138,36Z"
+          stroke={Colors.red}
+          strokeWidth="2.8"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* ECG right */}
+        <Polyline
+          points="188,50 206,50 214,22 224,78 232,8 242,78 250,50 268,50 320,50"
+          stroke={Colors.red}
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </Svg>
+    </Animated.View>
   );
 }
 
-export default function SplashScreen() {
-  const router = useRouter();
+// ── Feature row ───────────────────────────────────────────────────────────────
+
+function FeatureRow({ emoji, text, delay }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(16)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(anim,  { toValue: 1, duration: 500, delay, useNativeDriver: true }),
+      Animated.timing(slide, { toValue: 0, duration: 500, delay, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={C.black} />
+    <Animated.View style={[styles.featureRow, { opacity: anim, transform: [{ translateY: slide }] }]}>
+      <Text style={styles.featureEmoji}>{emoji}</Text>
+      <Text style={styles.featureText}>{text}</Text>
+    </Animated.View>
+  );
+}
 
-      <EcgLogo />
+// ── Screen ────────────────────────────────────────────────────────────────────
 
-      <Text style={styles.title}>PULSE</Text>
-      <Text style={styles.subtitle}>
-        Powered by IBM watsonx{'\n'}Your health, remembered.
-      </Text>
+export default function SplashScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const btnAnim = useRef(new Animated.Value(0)).current;
 
-      <View style={styles.features}>
-        {FEATURES.map((f, i) => (
-          <View key={i} style={styles.featRow}>
-            <View style={styles.featDot} />
-            <Text style={styles.featText}>{f}</Text>
-          </View>
-        ))}
+  useEffect(() => {
+    Animated.timing(btnAnim, {
+      toValue: 1, duration: 600, delay: 900,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.black} />
+
+      {/* Soft background circles */}
+      <View style={styles.bgCircle1} />
+      <View style={styles.bgCircle2} />
+
+      {/* Logo */}
+      <View style={styles.logoSection}>
+        <PulseLogo />
+        <Text style={styles.wordmark}>PULSE</Text>
+        <Text style={styles.tagline}>
+          Your health, remembered.{'\n'}Built for young adults.
+        </Text>
       </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-        onPress={() => router.replace('/(tabs)')}
-      >
-        <Text style={styles.btnText}>GET STARTED</Text>
-      </Pressable>
+      {/* Mission statement */}
+      <View style={styles.missionBox}>
+        <Text style={styles.missionText}>
+          When you turn 18, navigating healthcare gets complicated.{' '}
+          <Text style={styles.missionBold}>Pulse helps you track symptoms, prepare for appointments, and understand your health records.</Text>
+        </Text>
+      </View>
 
-      <Text style={styles.badge}>
-        IBM watsonx Orchestrate · IBM Granite · BIND Team
-      </Text>
+      {/* Features */}
+      <View style={styles.features}>
+        <FeatureRow emoji="🩺" text="Log symptoms and get AI-powered visit prep" delay={400} />
+        <FeatureRow emoji="📋" text="Upload doctor notes and extract key info"    delay={550} />
+        <FeatureRow emoji="📅" text="Build a health timeline you actually own"     delay={700} />
+      </View>
+
+      {/* CTA */}
+      <Animated.View style={{ opacity: btnAnim, transform: [{ translateY: btnAnim.interpolate({ inputRange:[0,1], outputRange:[12,0] }) }] }}>
+        <Pressable
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+          onPress={() => router.replace('/(tabs)')}
+        >
+          <Text style={styles.btnText}>GET STARTED</Text>
+        </Pressable>
+
+        <Text style={styles.disclaimer}>
+          Pulse does not diagnose. We help you organize, prepare, and advocate for yourself.
+        </Text>
+
+        <Text style={styles.ibmBadge}>Powered by IBM watsonx · IBM Granite</Text>
+      </Animated.View>
     </View>
   );
 }
@@ -68,82 +165,123 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: C.black,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.black,
     paddingHorizontal: 28,
-    paddingBottom: 48,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
   },
-  ecgLogo: {
-    marginBottom: 24,
+
+  // Background decoration
+  bgCircle1: {
+    position: 'absolute', top: -80, right: -80,
+    width: 280, height: 280, borderRadius: 140,
+    backgroundColor: 'rgba(201,64,64,0.10)',
   },
-  title: {
+  bgCircle2: {
+    position: 'absolute', bottom: 40, left: -60,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: 'rgba(201,64,64,0.06)',
+  },
+
+  // Logo block
+  logoSection: {
+    alignItems: 'center',
+    paddingTop: 24,
+    gap: 10,
+  },
+  wordmark: {
     fontFamily: FONTS.display,
-    fontSize: 80,
-    letterSpacing: 6,
-    color: C.white,
-    lineHeight: 80,
-    marginBottom: 6,
+    fontSize: 72,
+    letterSpacing: 8,
+    color: Colors.white,
+    lineHeight: 72,
+    marginTop: 4,
   },
-  subtitle: {
-    fontSize: 13,
-    color: C.gray400,
+  tagline: {
+    fontFamily: FONTS.body,
+    fontSize: FontSize.small,
+    color: 'rgba(255,255,255,0.40)',
     textAlign: 'center',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 40,
+    letterSpacing: 0.6,
+    lineHeight: 20,
+  },
+
+  // Mission
+  missionBox: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 16,
+  },
+  missionText: {
+    fontFamily: FONTS.body,
+    fontSize: FontSize.body,
+    color: 'rgba(255,255,255,0.55)',
     lineHeight: 22,
+    textAlign: 'center',
   },
-  features: {
-    width: '100%',
-    gap: 8,
-    marginBottom: 32,
+  missionBold: {
+    color: 'rgba(255,255,255,0.82)',
+    fontFamily: FONTS.bodySemi,
   },
-  featRow: {
+
+  // Features
+  features: { gap: 8 },
+  featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    padding: 12,
+    paddingVertical: 11,
     paddingHorizontal: 14,
     backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 8,
   },
-  featDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: C.red,
-  },
-  featText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.75)',
+  featureEmoji: { fontSize: 18 },
+  featureText: {
+    flex: 1,
     fontFamily: FONTS.body,
+    fontSize: FontSize.body,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 20,
   },
+
+  // Button
   btn: {
-    width: '100%',
+    backgroundColor: Colors.red,
+    borderRadius: Radius.sm,
     paddingVertical: 16,
-    backgroundColor: C.red,
-    borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 16,
+    ...Shadow.lg,
   },
   btnPressed: {
-    backgroundColor: C.redDark,
+    backgroundColor: Colors.redDark,
     transform: [{ scale: 0.98 }],
   },
   btnText: {
     fontFamily: FONTS.display,
-    fontSize: 22,
-    letterSpacing: 2,
-    color: C.white,
+    fontSize: 24,
+    letterSpacing: 3,
+    color: Colors.white,
   },
-  badge: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.2)',
+
+  disclaimer: {
+    fontFamily: FONTS.body,
+    fontSize: FontSize.tiny,
+    color: 'rgba(255,255,255,0.22)',
     textAlign: 'center',
-    letterSpacing: 1.5,
+    marginTop: 12,
+    lineHeight: 17,
+  },
+  ibmBadge: {
+    fontFamily: FONTS.body,
+    fontSize: FontSize.micro,
+    color: 'rgba(255,255,255,0.16)',
+    textAlign: 'center',
+    marginTop: 6,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
 });
