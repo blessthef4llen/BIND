@@ -6,7 +6,7 @@ from typing import List, Optional, Literal
 
 class SignupInput(BaseModel):
     username: str = Field(..., min_length=2, max_length=30)
-    pin: str      = Field(..., min_length=4, max_length=20)
+    pin: str      = Field(..., min_length=4, max_length=50)
 
 
 class LoginInput(BaseModel):

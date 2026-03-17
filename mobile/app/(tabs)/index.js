@@ -8,13 +8,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet,
-  StatusBar, ActivityIndicator,
+  StatusBar, ActivityIndicator, Alert,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { Colors, FONTS, FontSize, Radius, Shadow, SPECIALIST_COLORS } from '../../constants/theme';
 import { api } from '../../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── IBM status badge ─────────────────────────────────────────────────────────
 function IBMBadge({ status }) {
@@ -97,6 +98,16 @@ const qt = StyleSheet.create({
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  async function handleLogout() {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: async () => {
+        await AsyncStorage.multiRemove(['pulse_auth_token', 'pulse_auth_user']);
+        router.replace('/auth');
+      }},
+    ]);
+  }
   const [ibmStatus, setIBMStatus] = useState('connecting');
   const [concerns,  setConcerns]  = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -159,7 +170,12 @@ export default function HomeScreen() {
       {/* Top bar */}
       <View style={styles.topBar}>
         <Text style={styles.wordmark}>PULSE</Text>
-        <IBMBadge status={ibmStatus} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <IBMBadge status={ibmStatus} />
+          <Pressable onPress={handleLogout} style={styles.logoutBtn} hitSlop={8}>
+            <Text style={styles.logoutTxt}>Sign Out</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
@@ -289,5 +305,7 @@ const styles = StyleSheet.create({
   viewAllText:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.small, color: Colors.red },
 
   quickGrid: { flexDirection:'row', flexWrap:'wrap', gap:10, marginBottom:20 },
+  logoutBtn: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: Radius.pill, borderWidth: 1, borderColor: Colors.borderStrong },
+  logoutTxt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.micro, color: Colors.textMuted },
   footer:    { fontFamily: FONTS.body, fontSize: FontSize.micro, color: Colors.textFaint, textAlign:'center', marginTop:4, letterSpacing:0.5 },
 });
