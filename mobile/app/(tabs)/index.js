@@ -14,7 +14,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
 import { Colors, FONTS, FontSize, Radius, Shadow, SPECIALIST_COLORS } from '../../constants/theme';
-import { ROUTES } from '../../constants/theme'; // will use api.ts ROUTES below
 import { api } from '../../services/api';
 
 // ─── IBM status badge ─────────────────────────────────────────────────────────

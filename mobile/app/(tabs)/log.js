@@ -92,6 +92,7 @@ export default function LogScreen() {
   const [description,   setDescription]   = useState('');
   const [notes,         setNotes]         = useState('');
   const [severity,      setSeverity]      = useState(5);
+  const [manualCategory, setManualCategory] = useState('');
   const [submitting,    setSubmitting]     = useState(false);
   const [msgIdx,        setMsgIdx]         = useState(0);
   const [feedback,      setFeedback]       = useState(null);
@@ -123,7 +124,7 @@ export default function LogScreen() {
 
   function resetForm() {
     setSelectedArea(''); setStartTime(''); setUrgency('medium');
-    setDescription(''); setNotes(''); setSeverity(5); setFeedback(null);
+    setDescription(''); setNotes(''); setSeverity(5); setFeedback(null); setManualCategory('');
   }
 
   async function submit() {
@@ -134,7 +135,7 @@ export default function LogScreen() {
     setSubmitting(true);
 
     try {
-      // 1. Log concern (backend auto-categorizes)
+      // 1. Log concern (backend auto-categorizes unless user overrode)
       const newConcern = await api.logConcern({
         body_area:    selectedArea,
         symptom:      description.trim(),
@@ -142,6 +143,7 @@ export default function LogScreen() {
         severity,
         notes:        notes.trim(),
         symptom_date: new Date().toISOString().split('T')[0],
+        ...(manualCategory ? { category: manualCategory, category_confidence: 'high' } : {}),
       });
 
       // 2. Generate visit prep
@@ -256,6 +258,28 @@ export default function LogScreen() {
           <Text style={styles.fieldLabel}>Describe your concern *</Text>
           <TextInput style={[styles.input, styles.inputTall]} placeholder="e.g. Sharp pain when walking, worse at night…" placeholderTextColor={Colors.textFaint} multiline value={description} onChangeText={setDescription} textAlignVertical="top" />
 
+          {/* Category override */}
+          <Text style={styles.fieldLabel}>Specialist (AI suggests — tap to override)</Text>
+          <View style={styles.catGrid}>
+            {['General','Primary Care','Dentist','Dermatologist','Mental Health',
+              'Orthopedics','Optometrist','Gynecologist','Urgent Care'].map(cat => (
+              <Pressable
+                key={cat}
+                style={[styles.catChip, manualCategory === cat && styles.catChipActive]}
+                onPress={() => setManualCategory(manualCategory === cat ? '' : cat)}
+              >
+                <Text style={[styles.catChipTxt, manualCategory === cat && styles.catChipTxtActive]}>
+                  {cat}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {manualCategory ? (
+            <Text style={styles.catHint}>✓ You selected: {manualCategory}  ·  AI will skip auto-category</Text>
+          ) : (
+            <Text style={styles.catHint}>Leave blank — IBM Granite will auto-suggest</Text>
+          )}
+
           {/* Notes */}
           <Text style={styles.fieldLabel}>Additional notes (optional)</Text>
           <TextInput style={[styles.input, { height:64 }]} placeholder="Anything else to mention to your doctor?" placeholderTextColor={Colors.textFaint} multiline value={notes} onChangeText={setNotes} textAlignVertical="top" />
@@ -340,6 +364,13 @@ const styles = StyleSheet.create({
   subtitle:{ fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.textMuted, marginTop:2 },
   archiveLink: { paddingVertical:6, paddingHorizontal:10, backgroundColor: Colors.surface2, borderRadius: Radius.pill, borderWidth:1, borderColor: Colors.border },
   archiveLinkTxt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.small, color: Colors.textMuted },
+
+  catGrid:        { flexDirection:'row', flexWrap:'wrap', gap:6, marginBottom:6 },
+  catChip:        { borderWidth:1.5, borderColor: Colors.border, borderRadius: Radius.pill, paddingHorizontal:12, paddingVertical:6, backgroundColor: Colors.surface2 },
+  catChipActive:  { borderColor: Colors.red, backgroundColor: Colors.redLight },
+  catChipTxt:     { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.textMuted },
+  catChipTxtActive:{ fontFamily: FONTS.bodySemi, color: Colors.redDark },
+  catHint:        { fontFamily: FONTS.body, fontSize: FontSize.tiny, color: Colors.textFaint, marginBottom:14, marginTop:2 },
   scroll:  { flex:1, paddingHorizontal:20 },
 
   emptyWrap: { paddingTop:48, alignItems:'center', paddingHorizontal:16 },
