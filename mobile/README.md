@@ -1,106 +1,202 @@
-# PULSE — Mobile App
-## Team BIND | CSU AI Hackathon 2026
+# 🫀 PULSE
+### *Your health, remembered.*
+
+> An AI-powered health companion for young adults navigating healthcare on their own for the first time — built on IBM watsonx and IBM Granite.
 
 ---
 
-## Quick Start
+<div align="center">
+
+**[Team BIND](https://github.com/JCedrix) · CSU AI Hackathon 2026 · Powered by IBM watsonx**
+
+![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
+![IBM Watson](https://img.shields.io/badge/IBM_watsonx-1261FE?style=for-the-badge&logo=ibm&logoColor=white)
+![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+
+</div>
+
+---
+
+## 🧠 What is Pulse?
+
+When you turn 18, you're suddenly managing your own healthcare alone. No parent reminding you, no record of what your doctor said, no idea what questions to ask.
+
+**Pulse fixes that.**
+
+Pulse is a mobile health companion that helps young adults log symptoms, prepare for doctor visits, understand their medical records, and build a personal health timeline — all powered by IBM Granite AI agents.
+
+> *Pulse does not diagnose. It remembers, organizes, and advocates.*
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 🗺️ **Interactive Body Map** | Tap to log where it hurts — 24 zones, front and back view |
+| 🤖 **AI Auto-Categorization** | IBM Granite suggests which specialist you need automatically |
+| 📈 **Pattern Detection** | Detects escalation across your symptom history over time |
+| 📋 **Visit Prep** | Generates personalized doctor questions based on your symptoms |
+| 📷 **Post-Visit Upload** | Take a photo or upload a PDF of your doctor notes |
+| 🔍 **AI Extraction** | IBM Granite pulls out diagnosis, prescriptions, and follow-up date |
+| 📅 **Health Timeline** | Every visit, concern, and report saved to your personal record |
+| 🔐 **Private Accounts** | JWT authentication — your health data belongs only to you |
+
+---
+
+## 🤖 The AI Agents
+
+Pulse runs **4 IBM Granite agents** that chain together in real time.
+
+```
+User logs concern
+       │
+       ▼
+┌─────────────────────┐
+│  Agent 1            │  ← Categorizes specialist, logs concern
+│  Check-in Agent     │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  Agent 2            │  ← Scans history, detects escalation
+│  Pattern Detection  │     monitor / see_doctor / urgent
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  Agent 3            │  ← Generates personalized doctor questions
+│  Visit Prep Agent   │     informed by escalation decision
+└─────────────────────┘
+
+After appointment:
+
+┌─────────────────────┐
+│  Agent 4            │  ← Reads doctor notes (text, PDF, photo)
+│  Extractor Agent    │     returns structured medical summary
+└─────────────────────┘
+```
+
+### Agent Details
+
+🟥 **Agent 1 — Check-in Agent** (`prep_agent.py`)
+Reads your body area, description, and urgency. Uses IBM Granite to generate a personalized visit prep and auto-suggest a specialist category.
+
+🟧 **Agent 2 — Pattern Detection Agent** (`pattern_agent.py`)
+Scans your full concern history for a body area. Determines if symptoms are escalating and returns `monitor`, `see_doctor`, or `urgent` with a plain-language explanation.
+
+🟨 **Agent 3 — Visit Prep Agent** (`prep_agent.py`)
+Takes the escalation decision from Agent 2 and generates personalized questions tailored to your specific symptoms, severity, and trend.
+
+🟦 **Agent 4 — Extractor Agent** (`extractor_agent.py`)
+After your appointment, reads raw doctor notes and extracts diagnosis, prescriptions, key advice, and follow-up date in patient-friendly language.
+
+---
+
+## 🏗️ Tech Stack
+
+### Frontend
+- **React Native** + **Expo** — iOS and Android
+- **Expo Router** — file-based navigation
+- **React Native SVG** — interactive body map
+- **AsyncStorage** — persistent local auth token
+
+### Backend
+- **FastAPI** — REST API
+- **SQLite** — persistent user-scoped storage
+- **JWT Authentication** — private health data per user
+- **IBM watsonx Granite** — `ibm/granite-4-h-small` model
+
+### AI
+- **IBM watsonx AI** — all 4 agents call the Granite model directly
+- Real API calls on every request — no simulated responses
+- Graceful fallback to rule-based logic when IBM is unavailable
+
+---
+
+## 🚀 Getting Started
+
+### Backend
 
 ```bash
-# 1. Install dependencies
+cd backend
+pip install fastapi "uvicorn[standard]" python-dotenv pydantic python-multipart reportlab pypdf ibm-watsonx-ai
+```
+
+Create a `.env` file in `/backend`:
+```
+IBM_API_KEY=your_key_here
+IBM_PROJECT_ID=your_project_id_here
+IBM_URL=https://us-south.ml.cloud.ibm.com/
+JWT_SECRET=your_secret_here
+```
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend
+
+```bash
+cd mobile
 npm install
+npx expo install expo-font expo-router expo-splash-screen expo-document-picker expo-image-picker
+npx expo install @expo-google-fonts/bebas-neue @expo-google-fonts/dm-sans @expo-google-fonts/dm-serif-display
+npx expo install react-native-svg @react-native-async-storage/async-storage
+```
 
-# 2. Install Expo-specific packages
-npx expo install expo-font expo-router expo-linear-gradient expo-splash-screen expo-status-bar
-npx expo install @expo-google-fonts/dm-sans @expo-google-fonts/dm-serif-display
-npx expo install react-native-svg
-npx expo install @react-native-async-storage/async-storage
+Update `mobile/services/api.ts`:
+```ts
+export const API_BASE_URL = 'http://YOUR_IP:8000';
+```
 
-# 3. Set your LAN IP in services/api.ts
-# Replace YOUR_LOCAL_IP with output of: ifconfig (Mac) or ipconfig (Windows)
-# Example: const BASE_URL = 'http://192.168.1.42:5000';
-
-# 4. Start the Flask backend (from pulse/ directory)
-python run.py
-
-# 5. Start Expo
+```bash
 npx expo start
-
-# 6. Scan QR code with Expo Go app on your iPhone
 ```
 
 ---
 
-## File Structure
+## 🎬 Demo Sequence
 
-```
-app/
-  _layout.tsx          ← Font loading, root Stack
-  index.tsx            ← Onboarding redirect
-  onboarding.tsx       ← Screen 01
-  (tabs)/
-    _layout.tsx        ← 5-tab bottom bar
-    home.tsx           ← Screen 02: Dashboard
-    log.tsx            ← Screen 03: Log Concern
-    timeline.tsx       ← Screen 08: Timeline
-    labs.tsx           ← Screen 09: Lab Results
-    profile.tsx        ← Screen 11: Profile
-  body-map.tsx         ← Screen 04: Body Map
-  visit-prep.tsx       ← Screen 05: AI Visit Prep
-  doctor-notes.tsx     ← Screen 06: Doctor Notes
-  notes-extracted.tsx  ← Screen 07: Extraction Result
-  loading.tsx          ← Screen 10: AI Processing
-
-components/
-  BodyMap.tsx          ← Tappable SVG body diagram (14 zones)
-  ui/                  ← 15 shared components
-
-constants/
-  theme.ts             ← Colors, Fonts, Radius, FontSize
-  bodyZones.ts         ← SVG zone definitions
-
-services/
-  api.ts               ← All Flask API calls (UPDATE BASE_URL)
-```
+1. 🔐 **Sign up** — create your private account
+2. 🗺️ **Body Map** — tap a zone, log a concern
+3. 🤖 **AI Demo tab** — tap **Fire All 3 Agents** — watch the chain run live
+4. 📋 **Visit Prep** — see escalation decision + personalized doctor questions
+5. 📷 **Records tab** — tap **+**, upload doctor notes or take a photo
+6. 🔍 **AI Extraction** — see diagnosis and prescriptions pulled out automatically
+7. 📅 **Timeline** — view your complete health record
 
 ---
 
-## Demo Sequence (3-Minute Pitch)
+## 🔮 Future & Scalability
 
-1. **Timeline tab** — 7 days of escalating ankle data already seeded
-2. **Log tab** — tap **🎯 Demo: Run Day 8 Agent Chain**
-3. App navigates to **loading screen** (agents running)
-4. **Visit Prep screen** appears with escalation + 5 questions
-5. Navigate to **Doctor Notes** → paste note → Extract → Timeline
+- 🌍 **Multilingual support** — IBM Granite translation for non-English speaking patients and first-generation Americans
+- 🏥 **EHR integration** — Epic and MyChart connectivity so Pulse becomes part of the official medical record
+- ⌚ **Wearable ingestion** — Apple Health and Fitbit for passive symptom tracking
+- 📊 **Predictive escalation** — train on anonymized patterns to predict deterioration before it becomes an emergency
+- 🤝 **Clinic partnerships** — Pulse as a patient intake and follow-up tool at scale
 
-### Backup
-If the backend is unreachable, every screen has graceful fallback to mock data.
-The app will never crash on a failed API call.
+> The infrastructure is already built for it — multi-user, persistent, authenticated, AI-native from day one.
 
 ---
 
-## Pre-Demo Checklist
+## 👥 Team BIND
 
-- [ ] `python run.py` running — green in terminal
-- [ ] `GET /api/health` returns `{ ibm_ready: true }`
-- [ ] `BASE_URL` in `services/api.ts` set to LAN IP
-- [ ] Expo Go open on iPhone, QR scanned
-- [ ] App open on **Log** tab, ready to tap Demo button
-- [ ] Backup video ready on separate device
-- [ ] 8-day ankle data visible on Timeline tab
-
----
-
-## Team
-
-| Name | Role | Files |
-|------|------|-------|
-| Christopher | PM + Pitch | slides, README, demo script |
-| John | AI/ML Lead | granite.py, prep_agent.py |
-| Han | AI/ML + Integration | extractor_agent.py, routes.py |
-| Seth | Backend | app.py, config.py, storage.py |
-| Frontend Dev | Frontend | index.html → this repo |
+| Name | Role |
+|------|------|
+| Christopher | PM + Pitch |
+| John | AI/ML Lead |
+| Han | AI/ML + Integration |
+| Seth | Backend |
 
 ---
 
-*Powered by IBM watsonx Orchestrate + IBM Granite*
-*PULSE does not diagnose. It remembers, organizes, and advocates.*
+<div align="center">
+
+*Powered by IBM watsonx · IBM Granite · CSU AI Hackathon 2026*
+
+**Pulse does not diagnose. It remembers, organizes, and advocates.**
+
+</div>
