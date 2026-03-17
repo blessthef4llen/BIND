@@ -36,13 +36,13 @@ export default function RootLayout() {
     SplashScreen.hideAsync();
 
     const onAuthScreen = segments[0] === 'auth';
-    const onSplash     = segments[0] === 'index' || segments.length === 0;
+    const onSplash     = segments.length === 0 || segments[0] === '' || segments[0] === 'index';
 
     if (!user && !onAuthScreen && !onSplash) {
-      // Tried to access a protected screen without being logged in
+      // Accessing a protected screen without being logged in
       router.replace('/auth');
     } else if (user && onAuthScreen) {
-      // Already logged in, skip auth screen
+      // Already logged in — skip auth screen
       router.replace('/(tabs)');
     }
   }, [fontsLoaded, authLoading, user, segments]);
