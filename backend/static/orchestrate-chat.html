@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>PULSE Orchestrate Chat</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7f4;
+        --panel: #ffffff;
+        --ink: #0f1720;
+        --muted: #66727f;
+        --accent: #0d8f6a;
+        --border: #d8e0d7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top right, rgba(13, 143, 106, 0.12), transparent 28%),
+          linear-gradient(180deg, #f8fbf9 0%, var(--bg) 100%);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      #shell {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #status {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.88);
+        backdrop-filter: blur(8px);
+      }
+
+      #status strong {
+        display: block;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 4px;
+      }
+
+      #statusMessage {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      #root {
+        flex: 1;
+        min-height: 0;
+      }
+
+      .error-box {
+        margin: 24px 16px;
+        padding: 16px;
+        border: 1px solid #efc4c4;
+        border-radius: 14px;
+        background: #fff7f7;
+      }
+
+      .error-box h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      .error-box p,
+      .error-box li,
+      .error-box code {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .error-box code {
+        background: rgba(15, 23, 32, 0.06);
+        padding: 2px 5px;
+        border-radius: 6px;
+      }
+
+      .error-box ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="shell">
+      <div id="status">
+        <strong>PULSE x watsonx Orchestrate</strong>
+        <div id="statusMessage">Loading embedded chat configuration…</div>
+      </div>
+      <div id="root"></div>
+    </div>
+
+    <script>
+      const statusMessage = document.getElementById("statusMessage");
+      const root = document.getElementById("root");
+
+      function setStatus(message) {
+        statusMessage.textContent = message;
+      }
+
+      function renderError(title, details) {
+        root.innerHTML = `
+          <section class="error-box">
+            <h1>${title}</h1>
+            <p>${details}</p>
+            <ul>
+              <li>Set <code>ORCHESTRATE_ORCHESTRATION_ID</code>.</li>
+              <li>Set <code>ORCHESTRATE_AGENT_ID</code>.</li>
+              <li>Set <code>ORCHESTRATE_AGENT_ENVIRONMENT_ID</code>.</li>
+              <li>If embed security is enabled, point <code>ORCHESTRATE_TOKEN_ENDPOINT</code> to a backend JWT endpoint.</li>
+            </ul>
+          </section>
+        `;
+      }
+
+      async function getToken(tokenEndpoint) {
+        const response = await fetch(tokenEndpoint, { credentials: "include" });
+        if (!response.ok) {
+          throw new Error(`Token request failed with HTTP ${response.status}`);
+        }
+
+        return response.text();
+      }
+
+      async function loadChat() {
+        try {
+          const configResponse = await fetch("/orchestrate-chat/config", {
+            credentials: "same-origin",
+          });
+
+          if (!configResponse.ok) {
+            throw new Error(`Config request failed with HTTP ${configResponse.status}`);
+          }
+
+          const config = await configResponse.json();
+          const requiredKeys = [
+            ["orchestrationID", config.orchestrationID],
+            ["agentId", config.agentId],
+            ["agentEnvironmentId", config.agentEnvironmentId],
+          ];
+          const missing = requiredKeys.filter(([, value]) => !value).map(([key]) => key);
+
+          if (missing.length) {
+            setStatus("Missing required Orchestrate configuration.");
+            renderError(
+              "Embedded chat is not configured yet",
+              `The backend is serving this page correctly, but these fields are still empty: ${missing.join(", ")}.`
+            );
+            return;
+          }
+
+          window.wxOConfiguration = {
+            orchestrationID: config.orchestrationID,
+            hostURL: config.hostURL,
+            rootElementID: "root",
+            showLauncher: config.showLauncher,
+            defaultLocale: config.defaultLocale,
+            deploymentPlatform: config.deploymentPlatform || undefined,
+            crn: config.crn || undefined,
+            chatOptions: {
+              agentId: config.agentId,
+              agentEnvironmentId: config.agentEnvironmentId,
+            },
+            layout: config.layout,
+          };
+
+          if (config.tokenEndpoint) {
+            setStatus("Fetching embed token…");
+            window.wxOConfiguration.token = await getToken(config.tokenEndpoint);
+          }
+
+          setStatus("Initializing watsonx Orchestrate web chat…");
+
+          const script = document.createElement("script");
+          script.src = `${window.wxOConfiguration.hostURL}/wxochat/wxoLoader.js?embed=true`;
+          script.addEventListener("load", function () {
+            setStatus("Chat loaded.");
+            window.wxoLoader.init();
+          });
+          script.addEventListener("error", function () {
+            setStatus("Failed to load IBM chat assets.");
+            renderError(
+              "Chat assets failed to load",
+              "The page loaded, but the IBM loader script could not be fetched. Verify ORCHESTRATE_HOST_URL and network access."
+            );
+          });
+          document.head.appendChild(script);
+        } catch (error) {
+          setStatus("Failed to initialize embedded chat.");
+          renderError(
+            "Embedded chat startup failed",
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      }
+
+      loadChat();
+    </script>
+  </body>
+</html>

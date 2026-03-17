@@ -57,7 +57,6 @@ def generate_visit_prep(data: dict):
 
         response = model.generate_text(prompt=prompt)
 
-        # 🔥 extract JSON (your notebook logic)
         import json
         start = response.find("{")
         end = response.rfind("}") + 1
