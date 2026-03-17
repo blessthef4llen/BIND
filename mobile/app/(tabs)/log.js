@@ -54,45 +54,54 @@ export default function LogScreen() {
   const [saving, setSaving]             = useState(false);
   const [feedback, setFeedback]         = useState(null); // { type: 'ok'|'err', msg }
 
-  async function submit() {
-    if (!selectedArea) {
-      setFeedback({ type: 'err', msg: 'Please tap a body area first.' });
-      return;
-    }
-    if (!symptom.trim()) {
-      setFeedback({ type: 'err', msg: 'Please describe your pain.' });
-      return;
-    }
-    setSaving(true);
-    setFeedback(null);
-    try {
-      const r = await fetch(`${API_BASE}/log-concern`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          body_area: selectedArea,
-          symptom: symptom.trim(),
-          urgency_level: urgency,
-          severity,
-          notes: notes.trim(),
-          language: 'en',
-        }),
-      });
-      const d = await r.json();
-      setFeedback({ type: 'ok', msg: `Saved! You have ${d.total_concerns} concerns logged.` });
-      // reset form
-      setSelectedArea('');
-      setSymptom('');
-      setNotes('');
-      setSeverity(5);
-      setUrgency('medium');
-      setTimeout(() => router.push('/(tabs)'), 1200);
-    } catch {
-      setFeedback({ type: 'err', msg: 'Could not save — is python run.py running?' });
-    } finally {
-      setSaving(false);
-    }
+async function submit() {
+  if (!selectedArea) {
+    setFeedback({ type: 'err', msg: 'Please tap a body area first.' });
+    return;
   }
+  if (!symptom.trim()) {
+    setFeedback({ type: 'err', msg: 'Please describe your pain.' });
+    return;
+  }
+
+  setSaving(true);
+  setFeedback(null);
+
+  try {
+    const r = await fetch(`${API_BASE}/run-agent-chain`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        body_area: selectedArea,
+        symptom: symptom.trim(),
+        urgency_level: urgency,
+        severity,
+        notes: notes.trim(),
+        language: 'en',
+      }),
+    });
+
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+
+    const data = await r.json();
+
+    // 🚀 Navigate to Visit Prep with agent result
+    router.push({
+      pathname: '/visit-prep',
+      params: {
+        agentResult: JSON.stringify(data),
+      },
+    });
+
+  } catch (e) {
+    setFeedback({
+      type: 'err',
+      msg: 'Could not reach AI agents — is backend running?',
+    });
+  } finally {
+    setSaving(false);
+  }
+}
 
   return (
     <View style={styles.container}>

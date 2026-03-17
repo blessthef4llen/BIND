@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Colors, Fonts, FontSize, Radius } from '../constants/theme';
 import { PrimaryButton } from '../components/ui/PrimaryButton';
-import { api } from '../services/api';
+import { api } from '../services/app';
 
 const SAMPLE_NOTE =
   "Patient presents with left ankle pain (8/10). Likely plantar fasciitis aggravated by flat feet. " +

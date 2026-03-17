@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from backend.agents.prep_agent import generate_visit_prep
-from backend.agents.extractor_agent import extract_doctor_note
+from agents.prep_agent import generate_visit_prep
+from agents.extractor_agent import extract_doctor_note
 
 router = APIRouter()
 
