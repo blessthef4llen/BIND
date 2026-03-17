@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "PULSE",
-    "slug": "PULSE",
+    "name": "frontend",
+    "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ksmrotn.PULSE"
+      "bundleIdentifier": "com.ksmrotn.frontend"
     },
     "android": {
       "adaptiveIcon": {

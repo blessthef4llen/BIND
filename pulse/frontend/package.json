@@ -1,5 +1,5 @@
 {
-  "name": "pulse",
+  "name": "frontend",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -12,12 +12,7 @@
     "expo": "~55.0.6",
     "expo-status-bar": "~55.0.4",
     "react": "19.2.0",
-    "react-native": "0.83.2",
-    "react-native-svg": "15.15.3"
-  },
-  "devDependencies": {
-    "@types/react": "^19.1.1",
-    "typescript": "~5.8.3"
+    "react-native": "0.83.2"
   },
   "private": true
 }
