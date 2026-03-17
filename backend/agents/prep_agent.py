@@ -18,7 +18,7 @@ def _build_fallback_response(data: Dict[str, Any]) -> Dict[str, Any]:
     body_area = data.get("body_area", "").strip() or "General concern"
     start_time = data.get("start_time", "").strip()
     concern_description = data.get("concern_description", "").strip() or "a health concern"
-    urgency = data.get("urgency", "low").strip() or "low"
+    urgency = data.get("urgency", "low").strip().lower() or "low"
     additional_message = data.get("additional_message", "").strip()
 
     if urgency not in ["low", "medium", "high"]:
@@ -31,6 +31,7 @@ def _build_fallback_response(data: Dict[str, Any]) -> Dict[str, Any]:
     if start_time:
         summary_parts.append(f"It started around {start_time}.")
     summary_parts.append(f"You marked it as {urgency} urgency.")
+
     if additional_message:
         summary_parts.append(f"Additional note: {additional_message}")
 
@@ -76,12 +77,13 @@ def _normalize_output(raw_output: Any, original_data: Dict[str, Any]) -> Dict[st
         concerns_to_mention = fallback["concerns_to_mention"]
     else:
         cleaned_concerns = []
+
         for item in concerns_to_mention:
             if not isinstance(item, dict):
                 continue
 
             area = item.get("area")
-            urgency = item.get("urgency", "low")
+            urgency = str(item.get("urgency", "low")).strip().lower()
 
             if not isinstance(area, str) or not area.strip():
                 area = original_data.get("body_area", "").strip() or "General concern"
@@ -114,14 +116,16 @@ def _extract_json(text: str) -> Dict[str, Any]:
 
 
 def _build_prompt(data: Dict[str, Any]) -> str:
-    body_area = data.get("body_area", "")
-    start_time = data.get("start_time", "")
-    concern_description = data.get("concern_description", "")
-    urgency = data.get("urgency", "low")
-    additional_message = data.get("additional_message", "")
+    body_area = data.get("body_area", "").strip()
+    start_time = data.get("start_time", "").strip()
+    concern_description = data.get("concern_description", "").strip()
+    urgency = data.get("urgency", "low").strip().lower()
+    additional_message = data.get("additional_message", "").strip()
 
     if urgency not in ["low", "medium", "high"]:
         urgency = "low"
+
+    safe_body_area = body_area if body_area else "General concern"
 
     return f"""
 You are an assistant inside a health tracking mobile app.
@@ -149,7 +153,7 @@ Return ONLY valid JSON in this exact format:
   ],
   "concerns_to_mention": [
     {{
-      "area": "{body_area if body_area else 'General concern'}",
+      "area": "{safe_body_area}",
       "urgency": "{urgency}"
     }}
   ]
@@ -195,7 +199,6 @@ def generate_visit_prep(data: Dict[str, Any]) -> Dict[str, Any]:
         prompt = _build_prompt(data)
         response_text = model.generate_text(prompt=prompt)
 
-<<<<<<< HEAD
         try:
             parsed = _extract_json(response_text)
             return _normalize_output(parsed, data)
@@ -207,41 +210,3 @@ def generate_visit_prep(data: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         print("Prep agent error:", e)
         return fallback
-=======
-        Return ONLY JSON:
-        {{
-          "what_you_logged": "",
-          "body_area_explanation": "",
-          "recommended_visit": "",
-          "how_soon": "",
-          "symptom(s)": "",
-          "questions_for_doctor": []
-        }}
-        """
-
-        response = model.generate_text(prompt=prompt)
-
-        import json
-        start = response.find("{")
-        end = response.rfind("}") + 1
-        clean_output = json.loads(response[start:end])
-
-        return clean_output
-
-    except Exception as e:
-        print("AI ERROR:", e)
-
-        # fallback so demo never breaks
-        return {
-            "what_you_logged": "Knee pain when bending",
-            "body_area_explanation": "The knee joint helps with movement like walking and bending.",
-            "recommended_visit": "General doctor",
-            "how_soon": "Schedule soon",
-            "symptom(s)": "Knee pain",
-            "questions_for_doctor": [
-                "What could be causing this pain?",
-                "Should I avoid certain movements?",
-                "Do I need imaging or tests?"
-            ]
-        }
->>>>>>> 71991e0d917ac06ebc2d069340b9455e9efcf960
