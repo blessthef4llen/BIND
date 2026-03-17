@@ -1,64 +1,100 @@
 /**
- * app/auth.tsx — Login / Signup screen
+ * app/auth.tsx — Login / Signup
  *
- * Hackathon-grade auth: username + 4-digit PIN.
- * Fast to demo, shows we took user isolation seriously.
- * Warm red/white/charcoal brand.
+ * Self-contained: navigates directly to /(tabs) on success.
+ * Does NOT rely on _layout.js redirect.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   StatusBar, KeyboardAvoidingView, Platform,
-  Animated, Easing, ActivityIndicator,
+  Animated, Easing, ActivityIndicator, Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Polyline } from 'react-native-svg';
 import { Colors, FONTS, FontSize, Radius, Shadow } from '../constants/theme';
-import { useAuth } from '../hooks/useAuth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../services/api';
+
+const TOKEN_KEY = 'pulse_auth_token';
+const USER_KEY  = 'pulse_auth_user';
 
 type Mode = 'login' | 'signup';
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
-  const { login, signup, loading, error, clearError } = useAuth();
 
   const [mode,     setMode]     = useState<Mode>('login');
   const [username, setUsername] = useState('');
-  const [pin,      setPin]      = useState('');
+  const [password, setPassword] = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
 
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.8)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
+  const logoScale   = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(logoScale,   { toValue: 1, duration: 600, easing: Easing.out(Easing.back(1.2)), useNativeDriver: true }),
       Animated.timing(logoOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(logoScale,   { toValue: 1, duration: 500, easing: Easing.out(Easing.back(1.1)), useNativeDriver: true }),
     ]).start();
   }, []);
 
   function switchMode(m: Mode) {
-    clearError();
-    setPin('');
+    setError('');
+    setPassword('');
     setMode(m);
-    Animated.timing(slideAnim, {
-      toValue: m === 'signup' ? 1 : 0, duration: 250,
-      easing: Easing.out(Easing.quad), useNativeDriver: true,
-    }).start();
   }
 
   async function handleSubmit() {
-    if (!username.trim() || pin.length < 4) return;
-    const ok = mode === 'login'
-      ? await login(username.trim(), pin)
-      : await signup(username.trim(), pin);
+    const user = username.trim();
+    if (!user || password.length < 4) {
+      setError('Username and password (4+ characters) required.');
+      return;
+    }
 
-    if (ok) router.replace('/(tabs)');
+    setLoading(true);
+    setError('');
+
+    const endpoint = mode === 'login'
+      ? `${API_BASE_URL}/api/auth/login`
+      : `${API_BASE_URL}/api/auth/signup`;
+
+    try {
+      const res = await fetch(endpoint, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username: user, pin: password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.detail || (mode === 'login' ? 'Invalid username or password.' : 'Could not create account.'));
+        setLoading(false);
+        return;
+      }
+
+      // Save token and user to AsyncStorage
+      await AsyncStorage.setItem(TOKEN_KEY, data.token);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify({
+        user_id:  data.user_id,
+        username: data.username,
+        token:    data.token,
+      }));
+
+      // Navigate directly — don't wait for _layout.js
+      router.replace('/(tabs)');
+
+    } catch {
+      setError('Could not reach server. Make sure the backend is running.');
+      setLoading(false);
+    }
   }
 
-  const isReady = username.trim().length >= 2 && pin.length >= 4;
+  const canSubmit = username.trim().length >= 2 && password.length >= 4;
 
   return (
     <KeyboardAvoidingView
@@ -93,7 +129,7 @@ export default function AuthScreen() {
           <Text style={s.tagline}>Your health, remembered.</Text>
         </Animated.View>
 
-        {/* Tab switcher */}
+        {/* Mode toggle */}
         <View style={s.tabRow}>
           <Pressable style={[s.tab, mode === 'login' && s.tabActive]} onPress={() => switchMode('login')}>
             <Text style={[s.tabTxt, mode === 'login' && s.tabTxtActive]}>Sign In</Text>
@@ -105,11 +141,11 @@ export default function AuthScreen() {
 
         {/* Form */}
         <View style={s.form}>
-          <Text style={s.fieldLabel}>Username</Text>
+          <Text style={s.label}>Username</Text>
           <TextInput
             style={s.input}
             value={username}
-            onChangeText={t => { setUsername(t); clearError(); }}
+            onChangeText={t => { setUsername(t); setError(''); }}
             placeholder="e.g. alex_j"
             placeholderTextColor={Colors.darkTextFaint}
             autoCapitalize="none"
@@ -117,48 +153,41 @@ export default function AuthScreen() {
             returnKeyType="next"
           />
 
-          <Text style={[s.fieldLabel, { marginTop: 14 }]}>
-            {mode === 'signup' ? 'Password' : 'Password'}
-          </Text>
+          <Text style={[s.label, { marginTop: 16 }]}>Password</Text>
           <TextInput
             style={s.input}
-            value={pin}
-            onChangeText={t => { setPin(t); clearError(); }}
-            placeholder="••••••••"
+            value={password}
+            onChangeText={t => { setPassword(t); setError(''); }}
+            placeholder="4+ characters"
             placeholderTextColor={Colors.darkTextFaint}
             secureTextEntry
-            maxLength={20}
             returnKeyType="done"
             onSubmitEditing={handleSubmit}
           />
 
           {mode === 'signup' && (
-            <Text style={s.hint}>
-              Choose a username and password. No email needed.
-            </Text>
+            <Text style={s.hint}>No email needed. Just a username and password.</Text>
           )}
 
-          {error ? (
+          {!!error && (
             <View style={s.errorBox}>
               <Text style={s.errorTxt}>{error}</Text>
             </View>
-          ) : null}
+          )}
 
           <Pressable
-            style={({ pressed }) => [s.submitBtn, !isReady && s.submitDisabled, pressed && isReady && { opacity: 0.85 }]}
+            style={[s.btn, (!canSubmit || loading) && s.btnDisabled]}
             onPress={handleSubmit}
-            disabled={!isReady || loading}
+            disabled={!canSubmit || loading}
           >
             {loading
-              ? <ActivityIndicator color={Colors.white} />
-              : <Text style={s.submitTxt}>{mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}</Text>
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={s.btnTxt}>{mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}</Text>
             }
           </Pressable>
         </View>
 
-        {/* IBM badge */}
-        <Text style={s.ibmBadge}>Powered by IBM watsonx · IBM Granite · Team BIND</Text>
-        <Text style={s.disclaimer}>Pulse does not diagnose. Data stays on your device.</Text>
+        <Text style={s.footer}>Powered by IBM watsonx · Team BIND</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -166,35 +195,35 @@ export default function AuthScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 28, justifyContent: 'space-between' },
-  blob1: { position: 'absolute', top: -60, right: -60, width: 240, height: 240, borderRadius: 120, backgroundColor: 'rgba(201,64,64,0.12)' },
-  blob2: { position: 'absolute', bottom: 40, left: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(201,64,64,0.07)' },
+  blob1: { position: 'absolute', top: -60, right: -60, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(201,64,64,0.12)' },
+  blob2: { position: 'absolute', bottom: 40, left: -40, width: 160, height: 160, borderRadius: 80,  backgroundColor: 'rgba(201,64,64,0.07)' },
 
-  logoWrap:  { alignItems: 'center', gap: 6 },
-  wordmark:  { fontFamily: FONTS.display, fontSize: 56, letterSpacing: 6, color: Colors.white, lineHeight: 56 },
-  tagline:   { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.darkTextMuted, letterSpacing: 0.5 },
+  logoWrap: { alignItems: 'center', gap: 6 },
+  wordmark: { fontFamily: FONTS.display, fontSize: 52, letterSpacing: 6, color: Colors.white, lineHeight: 54 },
+  tagline:  { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.darkTextMuted },
 
-  tabRow:      { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: Radius.sm, padding: 3 },
-  tab:         { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: Radius.xs },
-  tabActive:   { backgroundColor: Colors.red },
-  tabTxt:      { fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.darkTextMuted },
-  tabTxtActive:{ fontFamily: FONTS.bodySemi, color: Colors.white },
+  tabRow:       { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: Radius.sm, padding: 3 },
+  tab:          { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: Radius.xs },
+  tabActive:    { backgroundColor: Colors.red },
+  tabTxt:       { fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.darkTextMuted },
+  tabTxtActive: { fontFamily: FONTS.bodySemi, color: Colors.white },
 
-  form: { gap: 0 },
-  fieldLabel: { fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.darkTextMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
+  form:  { gap: 0 },
+  label: { fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.darkTextMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 7 },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.12)',
-    borderRadius: Radius.xs, paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: Radius.xs, paddingHorizontal: 14, paddingVertical: 13,
     fontFamily: FONTS.body, fontSize: FontSize.body, color: Colors.white,
   },
-  hint: { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.darkTextFaint, marginTop: 6, lineHeight: 18 },
+  hint: { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.darkTextFaint, marginTop: 8 },
 
-  errorBox: { backgroundColor: 'rgba(201,64,64,0.15)', borderRadius: Radius.xs, padding: 10, marginTop: 10, borderWidth: 1, borderColor: 'rgba(201,64,64,0.3)' },
-  errorTxt: { fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.redMid },
+  errorBox: { backgroundColor: 'rgba(201,64,64,0.18)', borderRadius: Radius.xs, padding: 11, marginTop: 12, borderWidth: 1, borderColor: 'rgba(201,64,64,0.35)' },
+  errorTxt: { fontFamily: FONTS.body, fontSize: FontSize.small, color: '#ffaaaa' },
 
-  submitBtn:      { backgroundColor: Colors.red, borderRadius: Radius.sm, paddingVertical: 15, alignItems: 'center', marginTop: 20, ...Shadow.lg },
-  submitDisabled: { backgroundColor: 'rgba(201,64,64,0.35)' },
-  submitTxt:      { fontFamily: FONTS.display, fontSize: 22, letterSpacing: 2.5, color: Colors.white },
+  btn:         { backgroundColor: Colors.red, borderRadius: Radius.sm, paddingVertical: 15, alignItems: 'center', marginTop: 22, minHeight: 52, justifyContent: 'center', ...Shadow.lg },
+  btnDisabled: { opacity: 0.4 },
+  btnTxt:      { fontFamily: FONTS.display, fontSize: 22, letterSpacing: 2.5, color: Colors.white },
 
-  ibmBadge:   { fontFamily: FONTS.body, fontSize: FontSize.micro, color: 'rgba(255,255,255,0.18)', textAlign: 'center', letterSpacing: 1 },
-  disclaimer: { fontFamily: FONTS.body, fontSize: FontSize.micro, color: 'rgba(255,255,255,0.14)', textAlign: 'center', marginTop: 3 },
+  footer: { fontFamily: FONTS.body, fontSize: FontSize.micro, color: 'rgba(255,255,255,0.18)', textAlign: 'center' },
 });
