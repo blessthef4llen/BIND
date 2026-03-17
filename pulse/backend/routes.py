@@ -6,8 +6,8 @@ router = APIRouter()
 
 @router.post("/generate-visit-prep")
 def visit_prep(data: dict):
-    return generate_visit_prep(data)
-
+    result = generate_visit_prep(data)
+    return result
 
 @router.post("/extract-doctor-note")
 def extract_note(data: dict):
