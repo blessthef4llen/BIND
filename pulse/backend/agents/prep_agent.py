@@ -33,32 +33,51 @@ model = ModelInference(
     params=params
 )
 
-def generate_visit_prep(user_input: str):
+def generate_visit_prep(data: dict):
     try:
         prompt = f"""
-        A patient reports the following symptoms:
-        {user_input}
+        You are an assistant inside a health tracking mobile app.
 
-        Generate:
-        1. A short summary
-        2. Questions
-        3. Concerns
+        User log:
+        body_area: {data.get("body_area")}
+        symptom: {data.get("concern_description")}
+        severity: {data.get("urgency")}
+        duration: {data.get("start_time")}
+
+        Return ONLY JSON:
+        {{
+          "what_you_logged": "",
+          "body_area_explanation": "",
+          "recommended_visit": "",
+          "how_soon": "",
+          "symptom(s)": "",
+          "questions_for_doctor": []
+        }}
         """
 
-        response = model.generate_text(prompt)
+        response = model.generate_text(prompt=prompt)
 
-        return {
-            "symptom_summary": response,
-            "questions_to_ask": [],
-            "concerns_to_mention": []
-        }
+        # 🔥 extract JSON (your notebook logic)
+        import json
+        start = response.find("{")
+        end = response.rfind("}") + 1
+        clean_output = json.loads(response[start:end])
+
+        return clean_output
 
     except Exception as e:
         print("AI ERROR:", e)
 
-        # fallback (IMPORTANT for demo)
+        # fallback so demo never breaks
         return {
-            "symptom_summary": "Mock summary",
-            "questions_to_ask": ["What could be causing this?"],
-            "concerns_to_mention": ["Duration of symptoms"]
+            "what_you_logged": "Knee pain when bending",
+            "body_area_explanation": "The knee joint helps with movement like walking and bending.",
+            "recommended_visit": "General doctor",
+            "how_soon": "Schedule soon",
+            "symptom(s)": "Knee pain",
+            "questions_for_doctor": [
+                "What could be causing this pain?",
+                "Should I avoid certain movements?",
+                "Do I need imaging or tests?"
+            ]
         }
