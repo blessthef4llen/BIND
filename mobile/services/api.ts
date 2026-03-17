@@ -126,16 +126,28 @@ export const ROUTES = {
   timelineArchive:(id: string) => `${API_BASE}/timeline/${id}/archive`,
   timelineRestore:(id: string) => `${API_BASE}/timeline/${id}/restore`,
 
-  agentChain:     `${API_BASE}/run-agent-chain`,
+  agentChain:       `${API_BASE}/run-agent-chain`,
+  upload:           `${API_BASE}/upload`,
+  extractFile:      `${API_BASE}/extract-file`,
+  uploadLink:       (id: string) => `${API_BASE}/uploads/${id}/link`,
+  timelineUploads:  (id: string) => `${API_BASE}/timeline/${id}/uploads`,
+  timelineReport:   (id: string) => `${API_BASE}/timeline/${id}/report`,
 } as const;
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
+async function _getToken(): Promise<string | null> {
+  try {
+    const { default: AS } = await import('@react-native-async-storage/async-storage');
+    return AS.getItem('pulse_auth_token');
+  } catch { return null; }
+}
+
 async function _fetch<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const token = await _getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { headers, ...options });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`API ${options?.method ?? 'GET'} ${url} → ${res.status}: ${text}`);
@@ -194,4 +206,37 @@ export const api = {
     urgency_level: UrgencyLevel; severity: number;
     notes?: string;
   }) => post<AgentChainResult>(ROUTES.agentChain, data),
+
+  // Extract from uploaded file
+  extractFromFile: (uploadId: string) =>
+    post<ExtractNoteResponse>(ROUTES.extractFile, { upload_id: uploadId }),
+
+  // Link upload to timeline entry
+  linkUpload: (uploadId: string, timelineId: string) =>
+    patch<{ status: string }>(ROUTES.uploadLink(uploadId), { timeline_id: timelineId }),
+
+  // Get uploads attached to a timeline entry
+  getTimelineUploads: (timelineId: string) =>
+    get<{ uploads: UploadMeta[] }>(ROUTES.timelineUploads(timelineId)),
+
+  // URL to generate/download PDF report (use with Linking.openURL + ?token=)
+  getReportUrl: async (timelineId: string): Promise<string> => {
+    const token = await _getToken();
+    const base  = ROUTES.timelineReport(timelineId);
+    return token ? `${base}?token=${token}` : base;
+  },
+
+  // Upload file (multipart)
+  uploadFile: async (uri: string, name: string, mimeType: string): Promise<UploadMeta> => {
+    const token = await _getToken();
+    const form  = new FormData();
+    form.append('file', { uri, name, type: mimeType } as any);
+    const res = await fetch(ROUTES.upload, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail ?? 'Upload failed'); }
+    return res.json();
+  },
 };

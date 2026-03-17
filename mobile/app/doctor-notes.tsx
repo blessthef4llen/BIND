@@ -89,11 +89,13 @@ export default function DoctorNotesScreen() {
     }
   }
 
-  // ── Extract text ──────────────────────────────────────────────────────────
+  // ── Extract ───────────────────────────────────────────────────────────────
   async function handleExtract() {
     const text = noteText.trim();
-    if (!text) {
-      Alert.alert('Empty notes', 'Paste your doctor notes below, or use the sample note.');
+    const hasFile = !!uploadedId;
+
+    if (!text && !hasFile) {
+      Alert.alert('Nothing to extract', 'Upload a file or paste text first.');
       return;
     }
 
@@ -101,28 +103,27 @@ export default function DoctorNotesScreen() {
     router.push('/loading');
 
     try {
-      const result = await api.extract(text);
+      const result = hasFile && !text
+        ? await api.extractFromFile(uploadedId!)
+        : await api.extract(text);
+
       router.replace({
         pathname: '/notes-extracted',
-        params:   {
-          extracted:  JSON.stringify(result),
-          uploadId:   uploadedId || '',
-        },
+        params:   { extracted: JSON.stringify(result), uploadId: uploadedId || '' },
       });
     } catch {
       router.replace({
         pathname: '/notes-extracted',
-        params:   {
-          extracted: JSON.stringify(MOCK_EXTRACTED),
-          uploadId:  uploadedId || '',
-        },
+        params:   { extracted: JSON.stringify(MOCK_EXTRACTED), uploadId: uploadedId || '' },
       });
     } finally {
       setExtracting(false);
     }
   }
 
-  const busy = extracting || uploading;
+  const busy       = extracting || uploading;
+  const canExtract = !!noteText.trim() || !!uploadedId;
+  const btnLabel   = uploadedId && !noteText.trim() ? 'EXTRACT FROM FILE' : 'EXTRACT WITH IBM GRANITE';
 
   return (
     <KeyboardAvoidingView
@@ -225,13 +226,13 @@ export default function DoctorNotesScreen() {
 
         {/* ── CTA ───────────────────────────────────────────────────────── */}
         <Pressable
-          style={({ pressed }) => [styles.submitBtn, (busy || !noteText.trim()) && styles.submitDisabled, pressed && !busy && { opacity: 0.85 }]}
+          style={({ pressed }) => [styles.submitBtn, (!canExtract || busy) && styles.submitDisabled, pressed && canExtract && !busy && { opacity: 0.85 }]}
           onPress={handleExtract}
-          disabled={busy || !noteText.trim()}
+          disabled={!canExtract || busy}
         >
           {extracting
             ? <ActivityIndicator color={Colors.white} />
-            : <Text style={styles.submitTxt}>EXTRACT WITH IBM GRANITE</Text>
+            : <Text style={styles.submitTxt}>{btnLabel}</Text>
           }
         </Pressable>
       </ScrollView>

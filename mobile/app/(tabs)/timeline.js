@@ -12,6 +12,7 @@ import {
   ActivityIndicator, Pressable, Alert,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { Colors, FONTS, FontSize, Radius, Shadow } from '../../constants/theme';
@@ -28,7 +29,46 @@ function fmtDate(dateStr) {
 
 // ─── Timeline entry card ──────────────────────────────────────────────────────
 function RecordCard({ item, onArchive }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded,  setExpanded]  = useState(false);
+  const [uploads,   setUploads]   = useState(null);   // null = not loaded yet
+  const [loadingUp, setLoadingUp] = useState(false);
+
+  async function handleExpand() {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && uploads === null && item.id) {
+      setLoadingUp(true);
+      try {
+        const d = await api.getTimelineUploads(item.id);
+        setUploads(d.uploads || []);
+      } catch {
+        setUploads([]);
+      } finally {
+        setLoadingUp(false);
+      }
+    }
+  }
+
+  async function openUpload(upload) {
+    try {
+      const { API_BASE_URL } = await import('../../services/api');
+      const { default: AS }  = await import('@react-native-async-storage/async-storage');
+      const token = await AS.getItem('pulse_auth_token');
+      const url   = `${API_BASE_URL}/api/uploads/${upload.id}/download`;
+      await Linking.openURL(token ? `${url}?token=${token}` : url);
+    } catch {
+      Alert.alert('Error', 'Could not open file.');
+    }
+  }
+
+  async function openReport() {
+    try {
+      const url = await api.getReportUrl(item.id);
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Error', 'Could not open report.');
+    }
+  }
 
   return (
     <View style={rc.card}>
@@ -97,6 +137,27 @@ function RecordCard({ item, onArchive }) {
           </View>
         )}
 
+        {/* Attachments + PDF */}
+        {expanded && (
+          <View style={rc.attachSection}>
+            {loadingUp && (
+              <ActivityIndicator color={Colors.red} size="small" style={{ marginBottom: 8 }} />
+            )}
+            {uploads && uploads.filter(u => !u.original_name?.startsWith('pulse_report_')).map((u, i) => (
+              <Pressable key={i} style={rc.attachRow} onPress={() => openUpload(u)}>
+                <View style={rc.attachIcon}>
+                  <Text style={rc.attachIconTxt}>{u.mime_type === 'application/pdf' ? 'PDF' : 'IMG'}</Text>
+                </View>
+                <Text style={rc.attachName} numberOfLines={1}>{u.original_name}</Text>
+                <Text style={rc.attachOpen}>Open ↗</Text>
+              </Pressable>
+            ))}
+            <Pressable style={rc.reportBtn} onPress={openReport}>
+              <Text style={rc.reportBtnTxt}>⬇  Download PDF Report</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Expand chevron */}
         <View style={rc.chevron}>
           <Svg width={14} height={14} viewBox="0 0 14 14">
@@ -127,6 +188,14 @@ const rc = StyleSheet.create({
   followupLbl:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.small, color: Colors.textMuted },
   followupVal:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.body, color: Colors.text },
   chevron:    { alignItems: 'flex-end', marginTop: 6 },
+  attachSection: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border, gap: 6 },
+  attachRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, backgroundColor: Colors.surface2, borderRadius: Radius.xs, paddingHorizontal: 10 },
+  attachIcon: { backgroundColor: Colors.redLight, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  attachIconTxt: { fontFamily: FONTS.bodySemi, fontSize: FontSize.micro, color: Colors.redDark },
+  attachName: { flex: 1, fontFamily: FONTS.body, fontSize: FontSize.small, color: Colors.text },
+  attachOpen: { fontFamily: FONTS.bodySemi, fontSize: FontSize.tiny, color: Colors.red },
+  reportBtn:  { flexDirection: 'row', justifyContent: 'center', backgroundColor: Colors.black, borderRadius: Radius.xs, paddingVertical: 10, marginTop: 4 },
+  reportBtnTxt:{ fontFamily: FONTS.bodySemi, fontSize: FontSize.small, color: Colors.white, letterSpacing: 0.5 },
 });
 
 // ─── Screen ───────────────────────────────────────────────────────────────────

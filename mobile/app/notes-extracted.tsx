@@ -19,7 +19,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FONTS, FontSize, Radius, Shadow } from '../constants/theme';
-import { api, API_BASE } from '../services/api';
+import { api } from '../services/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +84,10 @@ export default function NotesExtractedScreen() {
         key_advice:     note.key_advice,
         follow_up_date: note.follow_up_date,
       });
+      // Link the uploaded file to this timeline entry
+      if (params.uploadId) {
+        try { await api.linkUpload(params.uploadId, entry.id); } catch {}
+      }
       setSavedTimelineId(entry.id);
     } catch {
       Alert.alert(
@@ -101,12 +105,8 @@ export default function NotesExtractedScreen() {
     if (!savedTimelineId) return;
     setGeneratingPdf(true);
     try {
-      // Open in browser — user can save from there
-      const url = `${API_BASE}/timeline/${savedTimelineId}/report`;
-      const token = await (await import('@react-native-async-storage/async-storage')).default.getItem('pulse_auth_token');
-      // Append token as query param for simple browser-based download
-      const fullUrl = token ? `${url}?token=${token}` : url;
-      await Linking.openURL(fullUrl);
+      const url = await api.getReportUrl(savedTimelineId);
+      await Linking.openURL(url);
     } catch {
       Alert.alert('PDF', 'Could not open PDF. Make sure the backend is running.');
     } finally {

@@ -46,7 +46,7 @@ import os, shutil, uuid
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
 from fastapi.responses import FileResponse, Response
 
 import database as db
@@ -65,7 +65,7 @@ from agents.prep_agent import generate_visit_prep
 from agents.extractor_agent import extract_doctor_note
 from agents.categorizer_agent import categorize_concern
 from agents.pattern_agent import detect_pattern
-from pdf_report import generate_report_bytes
+from pdf_report import generate_report_pdf, generate_report_bytes
 
 router = APIRouter()
 
@@ -256,56 +256,140 @@ def download_upload(uid: str, user: dict = Depends(get_current_user)):
 
 # ── PDF Report ────────────────────────────────────────────────────────────────
 
-def _resolve_user_from_token(token: Optional[str]) -> Optional[dict]:
-    """Allow token as query param for browser-based PDF download."""
-    if not token:
-        return None
-    payload = decode_token(token)
-    if not payload:
-        return None
-    return db.get_user_by_id(payload["sub"])
+def _resolve_user_from_request(request: Request, token_qp: Optional[str]) -> Optional[dict]:
+    """Resolve user from Bearer header first, then ?token= query param."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        payload = decode_token(auth_header[7:])
+        if payload:
+            return db.get_user_by_id(payload["sub"])
+    if token_qp:
+        payload = decode_token(token_qp)
+        if payload:
+            return db.get_user_by_id(payload["sub"])
+    return None
+
+
+def _extract_text_from_file(file_path: str, mime_type: str) -> str:
+    """Extract plain text from a stored file. Returns empty string on failure."""
+    try:
+        if mime_type == "application/pdf":
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(file_path)
+                return "\n".join(p.extract_text() or "" for p in reader.pages).strip()
+            except ImportError:
+                return ""
+        if mime_type.startswith("image/"):
+            try:
+                import pytesseract
+                from PIL import Image
+                return pytesseract.image_to_string(Image.open(file_path)).strip()
+            except ImportError:
+                return ""
+    except Exception:
+        return ""
+    return ""
+
+
+@router.post("/extract-file", response_model=ExtractNoteResponse)
+def extract_from_file(
+    payload: dict,
+    user: dict = Depends(get_current_user),
+):
+    upload_id = payload.get("upload_id", "")
+    if not upload_id:
+        raise HTTPException(400, "upload_id required")
+    with db._conn() as con:
+        row = con.execute(
+            "SELECT * FROM uploads WHERE id=? AND user_id=?", (upload_id, user["id"])
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Upload not found")
+    meta      = db._row_to_dict(row)
+    file_path = os.path.join(db.UPLOADS_DIR, meta["filename"])
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "File missing on server")
+    text = _extract_text_from_file(file_path, meta["mime_type"])
+    if not text:
+        text = (
+            f"[Auto-extraction failed for {meta['original_name']}. "
+            "Please paste the text manually for AI analysis.]"
+        )
+    return extract_doctor_note(text)
+
+
+@router.patch("/uploads/{uid}/link")
+def link_upload_to_timeline(
+    uid: str,
+    payload: dict,
+    user: dict = Depends(get_current_user),
+):
+    timeline_id = payload.get("timeline_id", "")
+    if not timeline_id:
+        raise HTTPException(400, "timeline_id required")
+    with db._conn() as con:
+        cur = con.execute(
+            "UPDATE uploads SET linked_timeline_id=? WHERE id=? AND user_id=?",
+            (timeline_id, uid, user["id"])
+        )
+    if cur.rowcount == 0:
+        raise HTTPException(404, "Upload not found")
+    return {"status": "linked", "upload_id": uid, "timeline_id": timeline_id}
 
 
 @router.api_route("/timeline/{eid}/report", methods=["GET", "POST"])
 async def pdf_report_handler(
     eid: str,
+    request: Request,
     token: Optional[str] = Query(None),
 ):
     """
-    Generate and stream a PDF report for a timeline entry.
-    Auth: Bearer token in header (normal API calls) OR ?token= query param
-    (for Linking.openURL browser-based download from the mobile app).
+    Generate + persist PDF. Returns same file on repeat calls.
+    Auth: Bearer header OR ?token= query param (Linking.openURL).
     """
-    user = _resolve_user_from_token(token)
+    user = _resolve_user_from_request(request, token)
     if not user:
         raise HTTPException(401, "Authentication required")
-
     entry = db.get_timeline_entry_by_id(eid)
     if not entry or entry.get("user_id") != user["id"]:
         raise HTTPException(404, "Timeline entry not found")
-
-    pdf_bytes = generate_report_bytes(
+    fname = f"pulse_report_{entry.get('visit_date', 'visit')}_{eid[:8]}.pdf"
+    # Return already-persisted report if it exists
+    for up in db.get_uploads_for_timeline(user["id"], eid):
+        if up.get("original_name", "").startswith("pulse_report_"):
+            saved = os.path.join(db.UPLOADS_DIR, up["filename"])
+            if os.path.exists(saved):
+                return FileResponse(saved, media_type="application/pdf", filename=fname)
+    # Generate and persist
+    saved_path = generate_report_pdf(
         user_name      = user["username"],
         visit_date     = entry.get("visit_date", "Unknown"),
         diagnosis      = entry.get("diagnosis", ""),
         prescriptions  = entry.get("prescriptions", []),
         key_advice     = entry.get("key_advice", []),
         follow_up_date = entry.get("follow_up_date", ""),
+        filename_prefix= f"pulse_report_{eid[:8]}",
     )
-
-    fname = f"pulse_report_{entry.get('visit_date', 'visit')}_{eid[:8]}.pdf"
-    if pdf_bytes:
-        return Response(content=pdf_bytes, media_type="application/pdf",
-                        headers={"Content-Disposition": f"attachment; filename={fname}"})
-
-    # reportlab not installed — plain text fallback
-    lines = ["PULSE — Post-Visit Summary", f"Visit: {entry.get('visit_date')}  ·  {user['username']}", "",
+    if saved_path and os.path.exists(saved_path):
+        dest_name    = os.path.basename(saved_path)
+        uploads_path = os.path.join(db.UPLOADS_DIR, dest_name)
+        if saved_path != uploads_path:
+            shutil.move(saved_path, uploads_path)
+        db.save_upload_meta(
+            user_id=user["id"], filename=dest_name,
+            original_name=fname, mime_type="application/pdf",
+            size_bytes=os.path.getsize(uploads_path), linked_timeline_id=eid,
+        )
+        return FileResponse(uploads_path, media_type="application/pdf", filename=fname)
+    # Fallback plain text
+    lines = ["PULSE Post-Visit Summary",
+             f"Visit: {entry.get('visit_date')}  \u00b7  {user['username']}", "",
              f"Diagnosis: {entry.get('diagnosis')}", "", "Prescriptions:"]
     lines += [f"  - {rx}" for rx in entry.get("prescriptions", [])]
     lines += ["", "Doctor's Advice:"] + [f"  - {t}" for t in entry.get("key_advice", [])]
     lines += ["", f"Follow-up: {entry.get('follow_up_date')}", "",
-              "Generated by PULSE · Powered by IBM Granite",
-              "AI organizational summary only. Not a medical diagnosis."]
+              "Generated by PULSE · Powered by IBM Granite"]
     return Response("\n".join(lines), media_type="text/plain",
                     headers={"Content-Disposition": f"attachment; filename=pulse_report_{eid[:8]}.txt"})
 
