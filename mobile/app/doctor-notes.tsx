@@ -8,12 +8,12 @@
  *   4. POST /api/extract → navigate to notes-extracted
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TextInput, Pressable,
   StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Colors, FONTS, FontSize, Radius, Shadow } from '../constants/theme';
@@ -50,10 +50,31 @@ export default function DoctorNotesScreen() {
   const [noteText,   setNoteText]   = useState('');
   const [extracting, setExtracting] = useState(false);
 
+  // Pre-loaded from camera or file picker (passed as route params)
+  const params = useLocalSearchParams<{ preloadedUri?: string; preloadedName?: string; preloadedMime?: string }>();
+
   // File upload flow
   const [uploadedFile,   setUploadedFile]   = useState<{ name: string; uri: string; mimeType: string } | null>(null);
   const [uploading,      setUploading]      = useState(false);
   const [uploadedId,     setUploadedId]     = useState<string | null>(null);   // backend upload ID
+
+  // Auto-load file if navigated here from camera/file picker
+  useEffect(() => {
+    if (params.preloadedUri && !uploadedFile) {
+      const file = {
+        uri:      params.preloadedUri,
+        name:     params.preloadedName || 'upload',
+        mimeType: params.preloadedMime || 'image/jpeg',
+      };
+      setUploadedFile(file);
+      // Auto-upload immediately
+      setUploading(true);
+      api.uploadFile(file.uri, file.name, file.mimeType)
+        .then(meta => setUploadedId(meta.id))
+        .catch(() => {}) // silent fail — user can still extract
+        .finally(() => setUploading(false));
+    }
+  }, [params.preloadedUri]);
 
   // ── Pick file ──────────────────────────────────────────────────────────────
   async function handlePickFile() {

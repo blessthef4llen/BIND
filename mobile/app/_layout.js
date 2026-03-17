@@ -1,9 +1,10 @@
 /**
  * app/_layout.js — Root layout with auth gate
  *
- * Loads all fonts, then checks if user is logged in.
- * If not → redirects to /auth (login/signup screen)
- * If yes → goes straight to /(tabs)
+ * - Loads fonts
+ * - Watches auth state from AsyncStorage via useAuth()
+ * - If not logged in → redirect to /auth
+ * - If logged in and on /auth → redirect to /(tabs)
  */
 
 import { useEffect } from 'react';
@@ -39,13 +40,11 @@ export default function RootLayout() {
     if (!fontsLoaded || authLoading) return;
     SplashScreen.hideAsync();
 
-    const inAuthScreen = segments[0] === 'auth';
+    const onAuthScreen = segments[0] === 'auth';
 
-    if (!user && !inAuthScreen) {
-      // Not logged in — send to login/signup
+    if (!user && !onAuthScreen) {
       router.replace('/auth');
-    } else if (user && inAuthScreen) {
-      // Already logged in — skip auth screen
+    } else if (user && onAuthScreen) {
       router.replace('/(tabs)');
     }
   }, [fontsLoaded, authLoading, user, segments]);

@@ -147,7 +147,7 @@ export default function SplashScreen() {
       <Animated.View style={{ opacity: btnAnim, transform: [{ translateY: btnAnim.interpolate({ inputRange:[0,1], outputRange:[12,0] }) }] }}>
         <Pressable
           style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-          onPress={() => router.replace('/(tabs)')}
+          onPress={() => router.replace('/auth')}
         >
           <Text style={styles.btnText}>GET STARTED</Text>
         </Pressable>

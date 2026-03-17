@@ -118,24 +118,23 @@ export default function AuthScreen() {
           />
 
           <Text style={[s.fieldLabel, { marginTop: 14 }]}>
-            {mode === 'signup' ? 'Create a PIN (4+ digits)' : 'PIN'}
+            {mode === 'signup' ? 'Password' : 'Password'}
           </Text>
           <TextInput
             style={s.input}
             value={pin}
-            onChangeText={t => { setPin(t.replace(/\D/g, '')); clearError(); }}
-            placeholder="••••"
+            onChangeText={t => { setPin(t); clearError(); }}
+            placeholder="••••••••"
             placeholderTextColor={Colors.darkTextFaint}
             secureTextEntry
-            keyboardType="number-pad"
-            maxLength={8}
+            maxLength={20}
             returnKeyType="done"
             onSubmitEditing={handleSubmit}
           />
 
           {mode === 'signup' && (
             <Text style={s.hint}>
-              Choose a username and PIN you'll remember. No email needed.
+              Choose a username and password. No email needed.
             </Text>
           )}
 
